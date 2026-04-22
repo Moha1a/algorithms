@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "1025525101614",
+    "project_id": "qiqa-c17c2",
+    "storage_bucket": "qiqa-c17c2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1025525101614:android:4da7e791eeb12acccfdbbf",
+        "android_client_info": {
+          "package_name": "com.company.manfathak"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1025525101614-0iq1m9suihp57p5aj73kfpsfvaq2at3e.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.company.manfathak",
+            "certificate_hash": "82df6f3b6e1b2cf6404d755f1ecd2eec0de42624"
+          }
+        },
+        {
+          "client_id": "1025525101614-e5dbe9u3k75svq501c7m91i9c0loghak.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyALEGcShx9HYqSJ6wE1KoUKk5JIEOwWyKw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1025525101614-e5dbe9u3k75svq501c7m91i9c0loghak.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
