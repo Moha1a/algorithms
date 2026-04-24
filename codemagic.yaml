@@ -1,10 +1,34 @@
 workflows:
   ios-preview:
-    name: iOS Preview
+    name: iOS Simulator Preview
+    max_build_duration: 45
+    instance_type: mac_mini_m2
+
     environment:
       flutter: stable
       xcode: latest
+      cocoapods: default
+
     scripts:
-      - name: Build iOS Simulator Preview
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+
+      - name: Install iOS pods
+        script: |
+          cd ios
+          pod install
+          cd ..
+
+      - name: Build iOS simulator app
         script: |
           flutter build ios --debug --simulator --dart-define=APP_PREVIEW_SAFE_MODE=true
+
+      - name: Zip iOS simulator app for preview
+        script: |
+          cd build/ios/iphonesimulator
+          rm -f Runner.app.zip
+          zip -r Runner.app.zip Runner.app
+
+    artifacts:
+      - build/ios/iphonesimulator/Runner.app.zip
