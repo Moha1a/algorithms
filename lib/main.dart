@@ -68,11 +68,9 @@ Future<void> _initializeFirebaseWithLogs() async {
 
 Future<void> _ensureFirebaseInitialized() async {
   if (Firebase.apps.isNotEmpty) return;
-  _firebaseInitFuture ??= kIsWeb
-      ? Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        )
-      : Firebase.initializeApp();
+  _firebaseInitFuture ??= Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   await _firebaseInitFuture;
 }
 
