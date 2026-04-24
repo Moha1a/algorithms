@@ -9,12 +9,15 @@ import 'package:flutter/foundation.dart';
 class DeviceRegistrationService {
   DeviceRegistrationService._();
   static final DeviceRegistrationService instance = DeviceRegistrationService._();
+  static const bool isPreviewSafeMode =
+      bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
 
   StreamSubscription<String>? _tokenRefreshSub;
 
   String _resolveDeviceId(String token) => token.hashCode.abs().toString();
 
   bool get _shouldSkipIosSimulatorRegistration {
+    if (isPreviewSafeMode) return true;
     if (kIsWeb) return false;
     return !kReleaseMode && Platform.isIOS;
   }
@@ -69,7 +72,7 @@ class DeviceRegistrationService {
     if (uid.trim().isEmpty) return;
 
     if (_shouldSkipIosSimulatorRegistration) {
-      debugPrint('DEVICE_REGISTER_SKIPPED_IOS_SIMULATOR');
+      debugPrint('DEVICE_REGISTRATION_SKIPPED_IOS_PREVIEW');
       return;
     }
 
@@ -77,7 +80,7 @@ class DeviceRegistrationService {
     try {
       token = await FirebaseMessaging.instance.getToken();
     } catch (error, stackTrace) {
-      debugPrint('DEVICE_REGISTER_FAILED_IGNORED: $error');
+      debugPrint('DEVICE_REGISTRATION_FAILED_IGNORED: $error');
       debugPrint('$stackTrace');
       return;
     }
@@ -127,7 +130,7 @@ class DeviceRegistrationService {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (error, stackTrace) {
-      debugPrint('DEVICE_REGISTER_FAILED_IGNORED: $error');
+      debugPrint('DEVICE_REGISTRATION_FAILED_IGNORED: $error');
       debugPrint('$stackTrace');
     }
   }
@@ -206,7 +209,7 @@ class DeviceRegistrationService {
         packageName: packageName,
       );
     } catch (error, stackTrace) {
-      debugPrint('DEVICE_REGISTER_FAILED_IGNORED: $error');
+      debugPrint('DEVICE_REGISTRATION_FAILED_IGNORED: $error');
       debugPrint('$stackTrace');
     }
   }

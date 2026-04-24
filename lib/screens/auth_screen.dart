@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/auth_service.dart';
 import '../services/iraqi_phone_utils.dart';
@@ -221,6 +223,7 @@ class _AuthScreenState extends State<AuthScreen> {
     debugPrint('LOGIN_BUTTON_PRESSED');
     final formState = _formKey.currentState;
     if (formState == null || !formState.validate()) return;
+    debugPrint('LOGIN_INPUT_VALIDATED');
     debugPrint('LOGIN_TRY_START');
 
     if (kIsWeb) {
@@ -289,12 +292,16 @@ class _AuthScreenState extends State<AuthScreen> {
           } on FirebaseAuthException catch (e) {
             flowHandled = false;
             debugPrint('LOGIN_CATCH_ERROR: ${e.code}');
+            debugPrint('LOGIN_FAILED_CONTROLLED');
             _showMessage(_authService.mapFirebaseAuthError(e));
+            _showDebugErrorDialog(e.toString());
           } catch (e, stackTrace) {
             flowHandled = false;
             debugPrint('LOGIN_CATCH_ERROR: $e');
             debugPrint('$stackTrace');
+            debugPrint('LOGIN_FAILED_CONTROLLED');
             _showMessage('حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.');
+            _showDebugErrorDialog(e.toString());
           } finally {
             if (mounted) setState(() => _isLoading = false);
           }
@@ -302,7 +309,9 @@ class _AuthScreenState extends State<AuthScreen> {
         verificationFailed: (e) {
           flowHandled = true;
           debugPrint('LOGIN_CATCH_ERROR: ${e.code}');
+          debugPrint('LOGIN_FAILED_CONTROLLED');
           _showMessage(_authService.mapFirebaseAuthError(e));
+          _showDebugErrorDialog(e.toString());
           if (mounted) setState(() => _isLoading = false);
         },
         codeSent: (verificationId, resendToken) {
@@ -336,12 +345,34 @@ class _AuthScreenState extends State<AuthScreen> {
       );
     } on FirebaseAuthException catch (e) {
       debugPrint('LOGIN_CATCH_ERROR: ${e.code}');
+      debugPrint('LOGIN_FAILED_CONTROLLED');
       _showMessage(_authService.mapFirebaseAuthError(e));
+      _showDebugErrorDialog(e.toString());
+      if (mounted) setState(() => _isLoading = false);
+    } on FirebaseException catch (e) {
+      debugPrint('LOGIN_CATCH_ERROR: ${e.code}');
+      debugPrint('LOGIN_FAILED_CONTROLLED');
+      _showMessage('حدث خطأ في الخدمة. حاول مرة أخرى.');
+      _showDebugErrorDialog(e.toString());
+      if (mounted) setState(() => _isLoading = false);
+    } on PlatformException catch (e) {
+      debugPrint('LOGIN_CATCH_ERROR: ${e.code}');
+      debugPrint('LOGIN_FAILED_CONTROLLED');
+      _showMessage('حدث خطأ بالنظام. حاول مرة أخرى.');
+      _showDebugErrorDialog(e.toString());
+      if (mounted) setState(() => _isLoading = false);
+    } on FormatException catch (e) {
+      debugPrint('LOGIN_CATCH_ERROR: $e');
+      debugPrint('LOGIN_FAILED_CONTROLLED');
+      _showMessage('البيانات غير صالحة. حاول مرة أخرى.');
+      _showDebugErrorDialog(e.toString());
       if (mounted) setState(() => _isLoading = false);
     } catch (e, stackTrace) {
       debugPrint('LOGIN_CATCH_ERROR: $e');
       debugPrint('$stackTrace');
+      debugPrint('LOGIN_FAILED_CONTROLLED');
       _showMessage('حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.');
+      _showDebugErrorDialog(e.toString());
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -433,6 +464,28 @@ class _AuthScreenState extends State<AuthScreen> {
   void _showMessage(String text) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  void _showDebugErrorDialog(String details) {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('خطأ أثناء تسجيل الدخول'),
+        content: SingleChildScrollView(
+          child: Text(
+            details,
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('إغلاق'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _safeNavigate(VoidCallback action) {

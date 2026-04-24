@@ -21,6 +21,8 @@ class PushNotificationsService {
   static const String _channelDescription = 'Used for order/chat/proposal updates.';
 
   static final FlutterLocalNotificationsPlugin _local = FlutterLocalNotificationsPlugin();
+  static const bool isPreviewSafeMode =
+      bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   StreamSubscription<User?>? _authSub;
@@ -80,6 +82,10 @@ class PushNotificationsService {
     _initialized = true;
 
     try {
+      if (_shouldSkipPushForPreview()) {
+        debugPrint('[PushNotificationsService] preview safe mode: skipping push initialization');
+        return;
+      }
       await ensureLocalNotificationsInitialized();
 
       if (!kIsWeb) {
@@ -158,6 +164,7 @@ class PushNotificationsService {
   }
 
   Future<void> _requestPermissions() async {
+    if (_shouldSkipPushForPreview()) return;
     try {
       final settings = await _messaging.requestPermission(
         alert: true,
@@ -191,6 +198,12 @@ class PushNotificationsService {
         msg.contains('simulator') ||
         msg.contains('messaging#gettoken') ||
         msg.contains('notifications are not supported');
+  }
+
+  bool _shouldSkipPushForPreview() {
+    if (isPreviewSafeMode) return true;
+    if (kIsWeb) return false;
+    return !kReleaseMode && Platform.isIOS;
   }
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {

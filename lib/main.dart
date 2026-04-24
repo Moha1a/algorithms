@@ -37,11 +37,13 @@ void main() {
     FlutterError.presentError(details);
     debugPrint('FLUTTER ERROR: ${details.exception}');
     debugPrint('${details.stack}');
+    _showGlobalError(details.exceptionAsString());
   };
 
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('UNHANDLED PLATFORM ERROR: $error');
     debugPrint('$stack');
+    _showGlobalError(error.toString());
     return true;
   };
 
@@ -51,6 +53,31 @@ void main() {
   runApp(
     MonfathakApp(firebaseInitFuture: firebaseInitFuture),
   );
+}
+
+void _showGlobalError(String message) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final context = rootNavigatorKey.currentContext;
+    if (context == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('حدث خطأ'),
+        content: SingleChildScrollView(
+          child: Text(
+            message,
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('إغلاق'),
+          ),
+        ],
+      ),
+    );
+  });
 }
 
 Future<void> _initializeFirebaseWithLogs() async {

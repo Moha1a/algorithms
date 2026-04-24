@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'device_registration_service.dart';
 import 'iraqi_phone_utils.dart';
@@ -146,7 +147,7 @@ class AuthService {
     required String governorate,
     String? outletName,
   }) async {
-    debugPrint('AUTH_SERVICE_START');
+    debugPrint('AUTH_LOGIN_START');
     try {
       final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
       final trimmedPassword = password.trim();
@@ -155,7 +156,7 @@ class AuthService {
       }
 
       final userCredential = await _auth.signInWithCredential(credential);
-      debugPrint('AUTH_SERVICE_SUCCESS');
+      debugPrint('AUTH_LOGIN_SUCCESS');
       final uid = userCredential.user?.uid;
       if (uid == null) {
         throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر تسجيل الدخول');
@@ -282,8 +283,21 @@ class AuthService {
       }
       debugPrint('PROFILE_LOAD_SUCCESS');
       return freshData;
+    } on FirebaseAuthException {
+      rethrow;
+    } on FirebaseException catch (error, stackTrace) {
+      debugPrint('PROFILE_LOAD_FAILED: $error');
+      debugPrint('$stackTrace');
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+    } on PlatformException catch (error, stackTrace) {
+      debugPrint('PROFILE_LOAD_FAILED: $error');
+      debugPrint('$stackTrace');
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+    } on FormatException catch (error, stackTrace) {
+      debugPrint('PROFILE_LOAD_FAILED: $error');
+      debugPrint('$stackTrace');
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
     } catch (error, stackTrace) {
-      if (error is FirebaseAuthException) rethrow;
       debugPrint('PROFILE_LOAD_FAILED: $error');
       debugPrint('$stackTrace');
       throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
@@ -378,11 +392,11 @@ class AuthService {
   }
 
   Future<void> _safeRegisterDevice() async {
-    debugPrint('DEVICE_REGISTER_START');
+    debugPrint('DEVICE_REGISTRATION_START');
     try {
       await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
     } catch (error, stackTrace) {
-      debugPrint('DEVICE_REGISTER_FAILED_IGNORED: $error');
+      debugPrint('DEVICE_REGISTRATION_FAILED_IGNORED: $error');
       debugPrint('$stackTrace');
     }
   }
