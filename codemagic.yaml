@@ -24,11 +24,6 @@ workflows:
         script: |
           flutter build ios --debug --simulator --dart-define=APP_PREVIEW_SAFE_MODE=true
 
-      - name: Zip iOS simulator app for preview
-        script: |
-          cd build/ios/iphonesimulator
-          rm -f Runner.app.zip
-          zip -r Runner.app.zip Runner.app
-
     artifacts:
+      - build/ios/iphonesimulator/Runner.app
       - build/ios/iphonesimulator/Runner.app.zip
