@@ -1,0 +1,43 @@
+workflows:
+  ios-preview:
+    name: iOS Simulator Preview
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+
+      - name: Build iOS simulator app
+        script: |
+          flutter build ios --debug --simulator
+
+    artifacts:
+      - build/ios/iphonesimulator/*.app
+
+
+  android-preview:
+    name: Android APK Preview
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      flutter: stable
+
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+
+      - name: Build Android debug APK
+        script: |
+          flutter build apk --debug
+
+    artifacts:
+      - build/app/outputs/flutter-apk/app-debug.apk
