@@ -98,14 +98,30 @@ class PushNotificationsService {
       await _requestPermissions();
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-        await _showForegroundNotification(message);
+        try {
+          await _showForegroundNotification(message);
+        } catch (error, stackTrace) {
+          debugPrint('[PushNotificationsService] onMessage handling failed (ignored): $error');
+          debugPrint('$stackTrace');
+        }
       });
 
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        _routeByPayload(message.data, navigatorKey);
+        try {
+          _routeByPayload(message.data, navigatorKey);
+        } catch (error, stackTrace) {
+          debugPrint('[PushNotificationsService] onMessageOpenedApp failed (ignored): $error');
+          debugPrint('$stackTrace');
+        }
       });
 
-      final initialMessage = await _messaging.getInitialMessage();
+      RemoteMessage? initialMessage;
+      try {
+        initialMessage = await _messaging.getInitialMessage();
+      } catch (error, stackTrace) {
+        debugPrint('[PushNotificationsService] getInitialMessage failed (ignored): $error');
+        debugPrint('$stackTrace');
+      }
       if (initialMessage != null) {
         _routeByPayload(initialMessage.data, navigatorKey);
       }

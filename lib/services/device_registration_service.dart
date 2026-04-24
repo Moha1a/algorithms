@@ -14,26 +14,49 @@ class DeviceRegistrationService {
 
   String _resolveDeviceId(String token) => token.hashCode.abs().toString();
 
+  bool get _shouldSkipIosSimulatorRegistration {
+    if (kIsWeb) return false;
+    return !kReleaseMode && Platform.isIOS;
+  }
+
   Future<void> _detachTokenFromOtherAccounts({
     required String token,
     required String activeUid,
   }) async {
     final db = FirebaseFirestore.instance;
 
-    final deviceMatches = await db.collectionGroup('devices').where('token', isEqualTo: token).get();
-    for (final doc in deviceMatches.docs) {
-      final ownerRef = doc.reference.parent.parent;
-      final ownerUid = ownerRef?.id ?? '';
-      if (ownerUid.isEmpty || ownerUid == activeUid) continue;
-      await doc.reference.delete();
+    try {
+      final deviceMatches = await db
+          .collectionGroup('devices')
+          .where('token', isEqualTo: token)
+          .get()
+          .timeout(const Duration(seconds: 8));
+      for (final doc in deviceMatches.docs) {
+        final ownerRef = doc.reference.parent.parent;
+        final ownerUid = ownerRef?.id ?? '';
+        if (ownerUid.isEmpty || ownerUid == activeUid) continue;
+        await doc.reference.delete();
+      }
+    } catch (error, stackTrace) {
+      debugPrint('[DeviceRegistrationService] detach devices failed: $error');
+      debugPrint('$stackTrace');
     }
 
-    final legacyMatches = await db.collectionGroup('fcmTokens').where('token', isEqualTo: token).get();
-    for (final doc in legacyMatches.docs) {
-      final ownerRef = doc.reference.parent.parent;
-      final ownerUid = ownerRef?.id ?? '';
-      if (ownerUid.isEmpty || ownerUid == activeUid) continue;
-      await doc.reference.delete();
+    try {
+      final legacyMatches = await db
+          .collectionGroup('fcmTokens')
+          .where('token', isEqualTo: token)
+          .get()
+          .timeout(const Duration(seconds: 8));
+      for (final doc in legacyMatches.docs) {
+        final ownerRef = doc.reference.parent.parent;
+        final ownerUid = ownerRef?.id ?? '';
+        if (ownerUid.isEmpty || ownerUid == activeUid) continue;
+        await doc.reference.delete();
+      }
+    } catch (error, stackTrace) {
+      debugPrint('[DeviceRegistrationService] detach fcmTokens failed: $error');
+      debugPrint('$stackTrace');
     }
   }
 
@@ -45,7 +68,20 @@ class DeviceRegistrationService {
   }) async {
     if (uid.trim().isEmpty) return;
 
-    final token = await FirebaseMessaging.instance.getToken();
+    if (_shouldSkipIosSimulatorRegistration) {
+      debugPrint('DEVICE REGISTRATION SKIPPED ON IOS SIMULATOR');
+      return;
+    }
+
+    String? token;
+    try {
+      token = await FirebaseMessaging.instance.getToken();
+    } catch (error, stackTrace) {
+      debugPrint('DEVICE REGISTRATION FAILED BUT IGNORED: $error');
+      debugPrint('$stackTrace');
+      return;
+    }
+
     if (token == null || token.trim().isEmpty) {
       debugPrint('[DeviceRegistrationService] no token for uid=$uid');
       return;
@@ -62,59 +98,64 @@ class DeviceRegistrationService {
                 ? 'ios'
                 : 'other';
 
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('devices')
-        .doc(deviceId)
-        .set({
-      'token': token,
-      'platform': platform,
-      'projectId': projectId,
-      'packageName': packageName,
-      'appVersion': appVersion,
-      'notificationEnabled': true,
-      'lastSeenAt': FieldValue.serverTimestamp(),
-      'lastTokenAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('devices')
+          .doc(deviceId)
+          .set({
+        'token': token,
+        'platform': platform,
+        'projectId': projectId,
+        'packageName': packageName,
+        'appVersion': appVersion,
+        'notificationEnabled': true,
+        'lastSeenAt': FieldValue.serverTimestamp(),
+        'lastTokenAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
-    debugPrint('[DeviceRegistrationService] token upserted under devices uid=$uid deviceId=$deviceId');
-
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('fcmTokens')
-        .doc(token)
-        .set({
-      'token': token,
-      'platform': platform,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    debugPrint('[DeviceRegistrationService] token upserted under fcmTokens uid=$uid');
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('fcmTokens')
+          .doc(token)
+          .set({
+        'token': token,
+        'platform': platform,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (error, stackTrace) {
+      debugPrint('DEVICE REGISTRATION FAILED BUT IGNORED: $error');
+      debugPrint('$stackTrace');
+    }
   }
 
   Future<void> unregisterCurrentDeviceForUser(String uid) async {
     if (uid.trim().isEmpty) return;
 
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token == null || token.trim().isEmpty) return;
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null || token.trim().isEmpty) return;
 
-    final db = FirebaseFirestore.instance;
-    final devicesSnap = await db
-        .collection('users')
-        .doc(uid)
-        .collection('devices')
-        .where('token', isEqualTo: token)
-        .get();
+      final db = FirebaseFirestore.instance;
+      final devicesSnap = await db
+          .collection('users')
+          .doc(uid)
+          .collection('devices')
+          .where('token', isEqualTo: token)
+          .get();
 
-    for (final doc in devicesSnap.docs) {
-      await doc.reference.delete();
+      for (final doc in devicesSnap.docs) {
+        await doc.reference.delete();
+      }
+
+      await db.collection('users').doc(uid).collection('fcmTokens').doc(token).delete();
+    } catch (error, stackTrace) {
+      debugPrint('[DeviceRegistrationService] unregister ignored: $error');
+      debugPrint('$stackTrace');
     }
-
-    await db.collection('users').doc(uid).collection('fcmTokens').doc(token).delete();
-
   }
 
   Future<void> startTokenRefreshListenerForUser({
@@ -131,6 +172,9 @@ class DeviceRegistrationService {
         projectId: projectId,
         packageName: packageName,
       );
+    }, onError: (error, stackTrace) {
+      debugPrint('[DeviceRegistrationService] token refresh listener error ignored: $error');
+      debugPrint('$stackTrace');
     });
   }
 
@@ -144,21 +188,26 @@ class DeviceRegistrationService {
     String projectId = 'unknown',
     String packageName = 'unknown',
   }) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
 
-    await registerCurrentDeviceForUser(
-      uid: user.uid,
-      appVersion: appVersion,
-      projectId: projectId,
-      packageName: packageName,
-    );
+      await registerCurrentDeviceForUser(
+        uid: user.uid,
+        appVersion: appVersion,
+        projectId: projectId,
+        packageName: packageName,
+      );
 
-    await startTokenRefreshListenerForUser(
-      uid: user.uid,
-      appVersion: appVersion,
-      projectId: projectId,
-      packageName: packageName,
-    );
+      await startTokenRefreshListenerForUser(
+        uid: user.uid,
+        appVersion: appVersion,
+        projectId: projectId,
+        packageName: packageName,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('DEVICE REGISTRATION FAILED BUT IGNORED: $error');
+      debugPrint('$stackTrace');
+    }
   }
 }

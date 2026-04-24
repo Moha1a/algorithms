@@ -146,128 +146,148 @@ class AuthService {
     required String governorate,
     String? outletName,
   }) async {
-    debugPrint('AUTH SERVICE LOGIN START');
-    final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
-    final trimmedPassword = password.trim();
-    if (trimmedPassword.length < 6) {
-      throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
-    }
-
-    final userCredential = await _auth.signInWithCredential(credential);
-    debugPrint('FIREBASE AUTH LOGIN SUCCESS');
-    final uid = userCredential.user?.uid;
-    if (uid == null) {
-      throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر تسجيل الدخول');
-    }
-
+    debugPrint('AUTH LOGIN START');
     try {
-      await _migrateLegacyUidIfNeeded(
-        currentUid: uid,
-        normalizedPhone: normalizedPhone,
-        role: role,
-      );
-    } catch (error, stackTrace) {
-      debugPrint('[AuthService] legacy migration skipped due to error: $error');
-      debugPrint('$stackTrace');
-    }
-
-    final userDocRef = _firestore.collection('users').doc(uid);
-    debugPrint('USER PROFILE LOAD START');
-    DocumentSnapshot<Map<String, dynamic>> snap;
-    try {
-      snap = await userDocRef.get().timeout(const Duration(seconds: 8));
-    } catch (error, stackTrace) {
-      debugPrint('USER PROFILE LOAD FAILED: $error');
-      debugPrint('$stackTrace');
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
-    }
-    final passwordHash = _hashPassword(trimmedPassword);
-
-    if (snap.exists && snap.data() != null) {
-      final profile = snap.data()!;
-      final existingRole = (profile['role'] ?? '').toString();
-      if (existingRole.isNotEmpty && existingRole != role) {
-        throw FirebaseAuthException(code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف');
-      }
-      if (role == 'outlet') {
-        final approvalStatus = (profile['approvalStatus'] ?? '').toString();
-        if (approvalStatus == 'pending') {
-          throw FirebaseAuthException(code: 'outlet-pending-approval', message: 'حساب المنفذ بانتظار موافقة الإدارة.');
-        }
-        if (approvalStatus == 'rejected') {
-          throw FirebaseAuthException(code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
-        }
+      final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
+      final trimmedPassword = password.trim();
+      if (trimmedPassword.length < 6) {
+        throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
       }
 
-      var savedHash = (profile['passwordHash'] ?? '').toString();
-      if (savedHash.isEmpty) {
+      final userCredential = await _auth.signInWithCredential(credential);
+      debugPrint('AUTH LOGIN SUCCESS');
+      final uid = userCredential.user?.uid;
+      if (uid == null) {
+        throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر تسجيل الدخول');
+      }
+
+      try {
+        await _migrateLegacyUidIfNeeded(
+          currentUid: uid,
+          normalizedPhone: normalizedPhone,
+          role: role,
+        );
+      } catch (error, stackTrace) {
+        debugPrint('[AuthService] legacy migration skipped due to error: $error');
+        debugPrint('$stackTrace');
+      }
+
+      final userDocRef = _firestore.collection('users').doc(uid);
+      debugPrint('PROFILE LOAD START');
+      DocumentSnapshot<Map<String, dynamic>> snap;
+      try {
+        snap = await userDocRef.get().timeout(const Duration(seconds: 8));
+      } catch (error, stackTrace) {
+        debugPrint('PROFILE LOAD FAILED: $error');
+        debugPrint('$stackTrace');
+        throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+      }
+      final passwordHash = _hashPassword(trimmedPassword);
+
+      if (snap.exists && snap.data() != null) {
+        final profile = snap.data()!;
+        final existingRole = (profile['role'] ?? '').toString();
+        if (existingRole.isNotEmpty && existingRole != role) {
+          throw FirebaseAuthException(code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف');
+        }
+        if (role == 'outlet') {
+          final approvalStatus = (profile['approvalStatus'] ?? '').toString();
+          if (approvalStatus == 'pending') {
+            throw FirebaseAuthException(
+              code: 'outlet-pending-approval',
+              message: 'حساب المنفذ بانتظار موافقة الإدارة.',
+            );
+          }
+          if (approvalStatus == 'rejected') {
+            throw FirebaseAuthException(code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
+          }
+        }
+
+        var savedHash = (profile['passwordHash'] ?? '').toString();
+        if (savedHash.isEmpty) {
+          await userDocRef.set({
+            'passwordHash': passwordHash,
+            'passwordCreatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          savedHash = passwordHash;
+        }
+        if (savedHash.trim().isNotEmpty && savedHash.trim() != passwordHash.trim()) {
+          await _auth.signOut();
+          throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة');
+        }
+
         await userDocRef.set({
-          'passwordHash': passwordHash,
-          'passwordCreatedAt': FieldValue.serverTimestamp(),
+          'uid': uid,
+          'phoneNumber': normalizedPhone,
+          'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
-        savedHash = passwordHash;
-      }
-      if (savedHash.trim().isNotEmpty && savedHash.trim() != passwordHash.trim()) {
-        await _auth.signOut();
-        throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة');
+
+        await _safeRegisterDevice();
+        final fresh = await userDocRef.get().timeout(const Duration(seconds: 8));
+        final freshData = fresh.data();
+        if (freshData == null) {
+          debugPrint('PROFILE LOAD FAILED: null profile after login');
+          throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+        }
+        debugPrint('PROFILE LOAD SUCCESS');
+        return freshData;
       }
 
-      await userDocRef.set({
+      if (!isRegistration) {
+        throw FirebaseAuthException(
+          code: 'missing-user-doc',
+          message: 'هذا الرقم غير مسجل بعد. اختر إنشاء حساب جديد أولًا',
+        );
+      }
+
+      final payload = <String, dynamic>{
         'uid': uid,
+        'fullName': fullName.trim(),
+        'role': role,
+        'governorate': governorate.trim(),
         'phoneNumber': normalizedPhone,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+        'passwordHash': passwordHash,
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      if (role == 'outlet') {
+        payload['outletName'] = (outletName ?? '').trim();
+        payload['approvalStatus'] = 'pending';
+        payload['approvalRequestedAt'] = FieldValue.serverTimestamp();
+        payload['approvalDecisionAt'] = null;
+        payload['approvedBy'] = '';
+      }
+
+      await userDocRef.set(payload, SetOptions(merge: true));
+
+      if (role == 'outlet') {
+        await _firestore.collection('notifications').add({
+          'toUserId': 'admin',
+          'type': 'outlet_approval_request',
+          'title': 'طلب منفذ جديد',
+          'body': 'تم تقديم طلب جديد من منفذ: ${fullName.trim().isEmpty ? normalizedPhone : fullName.trim()}',
+          'requestUid': uid,
+          'requestPhone': normalizedPhone,
+          'isRead': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
 
       await _safeRegisterDevice();
       final fresh = await userDocRef.get().timeout(const Duration(seconds: 8));
-      debugPrint('USER PROFILE LOAD SUCCESS');
-      return fresh.data()!;
+      final freshData = fresh.data();
+      if (freshData == null) {
+        debugPrint('PROFILE LOAD FAILED: null profile after registration');
+        throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+      }
+      debugPrint('PROFILE LOAD SUCCESS');
+      return freshData;
+    } catch (error, stackTrace) {
+      if (error is FirebaseAuthException) rethrow;
+      debugPrint('PROFILE LOAD FAILED: $error');
+      debugPrint('$stackTrace');
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
     }
-
-    if (!isRegistration) {
-      throw FirebaseAuthException(
-        code: 'missing-user-doc',
-        message: 'هذا الرقم غير مسجل بعد. اختر إنشاء حساب جديد أولًا',
-      );
-    }
-
-    final payload = <String, dynamic>{
-      'uid': uid,
-      'fullName': fullName.trim(),
-      'role': role,
-      'governorate': governorate.trim(),
-      'phoneNumber': normalizedPhone,
-      'passwordHash': passwordHash,
-      'createdAt': FieldValue.serverTimestamp(),
-    };
-
-    if (role == 'outlet') {
-      payload['outletName'] = (outletName ?? '').trim();
-      payload['approvalStatus'] = 'pending';
-      payload['approvalRequestedAt'] = FieldValue.serverTimestamp();
-      payload['approvalDecisionAt'] = null;
-      payload['approvedBy'] = '';
-    }
-
-    await userDocRef.set(payload, SetOptions(merge: true));
-
-    if (role == 'outlet') {
-      await _firestore.collection('notifications').add({
-        'toUserId': 'admin',
-        'type': 'outlet_approval_request',
-        'title': 'طلب منفذ جديد',
-        'body': 'تم تقديم طلب جديد من منفذ: ${fullName.trim().isEmpty ? normalizedPhone : fullName.trim()}',
-        'requestUid': uid,
-        'requestPhone': normalizedPhone,
-        'isRead': false,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-    }
-
-    await _safeRegisterDevice();
-    final fresh = await userDocRef.get().timeout(const Duration(seconds: 8));
-    debugPrint('USER PROFILE LOAD SUCCESS');
-    return fresh.data()!;
   }
 
   Future<void> resetPasswordAfterOtp({
@@ -362,7 +382,7 @@ class AuthService {
     try {
       await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
     } catch (error, stackTrace) {
-      debugPrint('DEVICE REGISTRATION FAILED: $error');
+      debugPrint('DEVICE REGISTRATION FAILED BUT IGNORED: $error');
       debugPrint('$stackTrace');
     }
   }
