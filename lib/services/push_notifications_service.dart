@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -115,12 +116,22 @@ class PushNotificationsService {
           return;
         }
 
-        await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
+        try {
+          await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
+        } catch (error, stackTrace) {
+          debugPrint('[PushNotificationsService] token registration failed: $error');
+          debugPrint('$stackTrace');
+        }
       });
 
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
-        await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
+        try {
+          await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
+        } catch (error, stackTrace) {
+          debugPrint('[PushNotificationsService] initial token registration failed: $error');
+          debugPrint('$stackTrace');
+        }
       }
     } catch (error, stackTrace) {
       _initialized = false;
@@ -131,19 +142,39 @@ class PushNotificationsService {
   }
 
   Future<void> _requestPermissions() async {
-    final settings = await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-      provisional: false,
-    );
-    debugPrint('[PushNotificationsService] Firebase permission: ${settings.authorizationStatus}');
+    try {
+      final settings = await _messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
+      debugPrint('[PushNotificationsService] Firebase permission: ${settings.authorizationStatus}');
+    } catch (error, stackTrace) {
+      if (_isExpectedSimulatorPushError(error)) {
+        debugPrint('[PushNotificationsService] simulator push permission issue ignored: $error');
+        return;
+      }
+      debugPrint('[PushNotificationsService] requestPermission failed: $error');
+      debugPrint('$stackTrace');
+      rethrow;
+    }
 
     if (!kIsWeb) {
       await _local
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
           ?.requestNotificationsPermission();
     }
+  }
+
+  bool _isExpectedSimulatorPushError(Object error) {
+    if (!Platform.isIOS) return false;
+    final msg = error.toString().toLowerCase();
+    return msg.contains('apns') ||
+        msg.contains('token') ||
+        msg.contains('simulator') ||
+        msg.contains('messaging#gettoken') ||
+        msg.contains('notifications are not supported');
   }
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {

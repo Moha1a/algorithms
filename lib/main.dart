@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -24,25 +25,45 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await _ensureFirebaseInitialized();
     await PushNotificationsService.showBackgroundNotification(message);
   } catch (error, stackTrace) {
-    print('BACKGROUND HANDLER ERROR: $error');
-    print(stackTrace);
+    debugPrint('BACKGROUND HANDLER ERROR: $error');
+    debugPrint('$stackTrace');
   }
 }
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-    print('FLUTTER ERROR: ${details.exception}');
-    print(details.stack);
+    debugPrint('FLUTTER ERROR: ${details.exception}');
+    debugPrint('${details.stack}');
   };
 
-  print('APP STARTED');
-  await _ensureFirebaseInitialized();
-  print('FIREBASE INITIALIZED');
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  runApp(const MonfathakApp());
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('UNHANDLED PLATFORM ERROR: $error');
+    debugPrint('$stack');
+    return true;
+  };
+
+  debugPrint('APP STARTED');
+  final firebaseInitFuture = _initializeFirebaseWithLogs();
+
+  runApp(
+    MonfathakApp(firebaseInitFuture: firebaseInitFuture),
+  );
+}
+
+Future<void> _initializeFirebaseWithLogs() async {
+  debugPrint('FIREBASE INIT START');
+  try {
+    await _ensureFirebaseInitialized();
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    debugPrint('FIREBASE INIT SUCCESS');
+  } catch (error, stackTrace) {
+    debugPrint('FIREBASE INIT FAILED: $error');
+    debugPrint('$stackTrace');
+    rethrow;
+  }
 }
 
 Future<void> _ensureFirebaseInitialized() async {
@@ -56,7 +77,9 @@ Future<void> _ensureFirebaseInitialized() async {
 }
 
 class MonfathakApp extends StatelessWidget {
-  const MonfathakApp({super.key});
+  const MonfathakApp({super.key, required this.firebaseInitFuture});
+
+  final Future<void> firebaseInitFuture;
 
   @override
   Widget build(BuildContext context) {
@@ -81,13 +104,15 @@ class MonfathakApp extends StatelessWidget {
         );
       },
       theme: AppTheme.light,
-      home: const _FirebaseBootstrapper(),
+      home: _FirebaseBootstrapper(firebaseInitFuture: firebaseInitFuture),
     );
   }
 }
 
 class _FirebaseBootstrapper extends StatefulWidget {
-  const _FirebaseBootstrapper();
+  const _FirebaseBootstrapper({required this.firebaseInitFuture});
+
+  final Future<void> firebaseInitFuture;
 
   @override
   State<_FirebaseBootstrapper> createState() => _FirebaseBootstrapperState();
@@ -99,27 +124,27 @@ class _FirebaseBootstrapperState extends State<_FirebaseBootstrapper> {
   @override
   void initState() {
     super.initState();
-    _initialScreenFuture = _resolveInitialScreen();
+    _initialScreenFuture = _bootstrapApp();
+  }
+
+  Future<Widget> _bootstrapApp() async {
+    await widget.firebaseInitFuture;
     Future.microtask(_initPushNonBlocking);
+    return _resolveInitialScreen();
   }
 
   Future<void> _initPushNonBlocking() async {
     try {
-      print('PUSH INIT START');
+      debugPrint('PUSH INIT START');
       await PushNotificationsService.instance.initialize(rootNavigatorKey);
-      print('PUSH INIT DONE');
     } catch (error, stackTrace) {
-      print('PUSH INIT ERROR: $error');
-      print(stackTrace);
-      Future.delayed(const Duration(seconds: 3), () async {
-        try {
-          await PushNotificationsService.instance.initialize(rootNavigatorKey);
-        } catch (_) {}
-      });
+      debugPrint('PUSH INIT FAILED: $error');
+      debugPrint('$stackTrace');
     }
   }
 
   Future<Widget> _resolveInitialScreen() async {
+    debugPrint('INITIAL SCREEN RESOLVE START');
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return const RoleSelectionScreen();
@@ -133,8 +158,8 @@ class _FirebaseBootstrapperState extends State<_FirebaseBootstrapper> {
       if (profile == null) return const RoleSelectionScreen();
       return HomeShellScreen(profile: profile);
     } catch (error, stackTrace) {
-      print('INITIAL PROFILE LOAD ERROR: $error');
-      print(stackTrace);
+      debugPrint('INITIAL SCREEN RESOLVE FAILED: $error');
+      debugPrint('$stackTrace');
       return const RoleSelectionScreen();
     }
   }
@@ -147,8 +172,63 @@ class _FirebaseBootstrapperState extends State<_FirebaseBootstrapper> {
         if (profileSnap.connectionState != ConnectionState.done) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
+        if (profileSnap.hasError) {
+          return _StartupErrorScreen(error: profileSnap.error);
+        }
         return profileSnap.data ?? const RoleSelectionScreen();
       },
+    );
+  }
+}
+
+class _StartupErrorScreen extends StatelessWidget {
+  const _StartupErrorScreen({this.error});
+
+  final Object? error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline_rounded, size: 64, color: Colors.redAccent),
+                const SizedBox(height: 12),
+                const Text(
+                  'تعذر تشغيل التطبيق',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'حدث خطأ أثناء تهيئة Firebase أو بدء التشغيل. يمكنك المتابعة لشاشة البداية أو إعادة المحاولة.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                if (kDebugMode && error != null)
+                  Text(
+                    error.toString(),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+                      (_) => false,
+                    );
+                  },
+                  child: const Text('المتابعة إلى شاشة البداية'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
