@@ -146,10 +146,23 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                 itemBuilder: (_, i) {
                   final u = docs[i].data();
                   final uid = (u['uid'] ?? docs[i].id).toString();
+                  final approvalStatus = (u['approvalStatus'] ?? '').toString();
+                  final isOutletRole = widget.role == 'outlet';
+                  final statusLabel = approvalStatus == 'approved'
+                      ? 'مقبول'
+                      : approvalStatus == 'rejected'
+                          ? 'مرفوض'
+                          : approvalStatus == 'pending'
+                              ? 'بانتظار الموافقة'
+                              : '';
                   return Card(
                     child: ListTile(
                       title: Text((u['fullName'] ?? uid).toString()),
-                      subtitle: Text('${(u['email'] ?? '').toString()}\nالتقييم: ${(u['ratingAverage'] ?? 0).toString()}'),
+                      subtitle: Text(
+                        '${(u['email'] ?? '').toString()}\n'
+                        'التقييم: ${(u['ratingAverage'] ?? 0).toString()}'
+                        '${statusLabel.isEmpty ? '' : '\nالحالة: $statusLabel'}',
+                      ),
                       isThreeLine: true,
                       trailing: PopupMenuButton<String>(
                         onSelected: (v) async {
@@ -205,12 +218,58 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                             await FirebaseFirestore.instance.collection('users').doc(uid).set({
                               'isBlocked': true,
                             }, SetOptions(merge: true));
+                          } else if (v == 'approve_outlet') {
+                            await FirebaseFirestore.instance.collection('users').doc(uid).set({
+                              'approvalStatus': 'approved',
+                              'approvalDecisionAt': FieldValue.serverTimestamp(),
+                              'approvedBy': 'admin',
+                            }, SetOptions(merge: true));
+                            await PushSenderService.instance.sendPush(
+                              recipientUid: uid,
+                              title: 'تم قبول طلبك ✅',
+                              body: 'تمت الموافقة على حساب المنفذ الخاص بك ويمكنك تسجيل الدخول الآن.',
+                              type: 'outlet_approval_accepted',
+                              actorId: 'admin',
+                            );
+                            await FirebaseFirestore.instance.collection('notifications').add({
+                              'toUserId': uid,
+                              'type': 'outlet_approval_accepted',
+                              'title': 'تم قبول طلبك ✅',
+                              'body': 'تمت الموافقة على حساب المنفذ الخاص بك ويمكنك تسجيل الدخول الآن.',
+                              'isRead': false,
+                              'createdAt': FieldValue.serverTimestamp(),
+                            });
+                          } else if (v == 'reject_outlet') {
+                            await FirebaseFirestore.instance.collection('users').doc(uid).set({
+                              'approvalStatus': 'rejected',
+                              'approvalDecisionAt': FieldValue.serverTimestamp(),
+                              'approvedBy': 'admin',
+                            }, SetOptions(merge: true));
+                            await PushSenderService.instance.sendPush(
+                              recipientUid: uid,
+                              title: 'تم رفض طلب المنفذ',
+                              body: 'يرجى التواصل مع الإدارة لمعرفة التفاصيل.',
+                              type: 'outlet_approval_rejected',
+                              actorId: 'admin',
+                            );
+                            await FirebaseFirestore.instance.collection('notifications').add({
+                              'toUserId': uid,
+                              'type': 'outlet_approval_rejected',
+                              'title': 'تم رفض طلب المنفذ',
+                              'body': 'يرجى التواصل مع الإدارة لمعرفة التفاصيل.',
+                              'isRead': false,
+                              'createdAt': FieldValue.serverTimestamp(),
+                            });
                           }
                         },
-                        itemBuilder: (_) => const [
-                          PopupMenuItem(value: 'chat', child: Text('مراسلة')),
-                          PopupMenuItem(value: 'notify', child: Text('إرسال إشعار')),
-                          PopupMenuItem(value: 'remove', child: Text('حظر المستخدم')),
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(value: 'chat', child: Text('مراسلة')),
+                          const PopupMenuItem(value: 'notify', child: Text('إرسال إشعار')),
+                          if (isOutletRole && approvalStatus == 'pending')
+                            const PopupMenuItem(value: 'approve_outlet', child: Text('قبول طلب المنفذ')),
+                          if (isOutletRole && approvalStatus == 'pending')
+                            const PopupMenuItem(value: 'reject_outlet', child: Text('رفض طلب المنفذ')),
+                          const PopupMenuItem(value: 'remove', child: Text('حظر المستخدم')),
                         ],
                       ),
                     ),

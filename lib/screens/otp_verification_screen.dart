@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../theme/app_colors.dart';
 import 'home_shell_screen.dart';
+import 'outlet_approval_pending_screen.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   const OtpVerificationScreen({
@@ -130,6 +131,20 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         outletName: widget.outletName,
       );
       if (!mounted) return;
+      final isOutletRegistrationPending = widget.isRegistration &&
+          widget.role == 'outlet' &&
+          (profile['approvalStatus'] ?? '').toString() == 'pending';
+      if (isOutletRegistrationPending) {
+        await FirebaseAuth.instance.signOut();
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => OutletApprovalPendingScreen(phoneNumber: widget.phoneNumber),
+          ),
+          (_) => false,
+        );
+        return;
+      }
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => HomeShellScreen(profile: profile)),
         (_) => false,
@@ -145,7 +160,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   Future<void> _submitNewPassword() async {
     final verifiedUid = _verifiedUid;
-    if (_verifiedCredential == null || verifiedUid == null || verifiedUid.trim().isEmpty) return;
+    if (_verifiedCredential == null || verifiedUid == null || verifiedUid.trim().isNotEmpty == false) return;
     final verifiedAt = _verifiedAt;
     if (verifiedAt == null || DateTime.now().difference(verifiedAt) > _passwordResetWindow) {
       _showMessage('انتهت مهلة التحقق. يرجى إعادة إرسال رمز التحقق.');

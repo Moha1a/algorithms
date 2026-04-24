@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
 
@@ -30,19 +31,21 @@ class AppTheme {
       labelSmall: TextStyle(fontWeight: FontWeight.w600),
     );
 
+    final textTheme = GoogleFonts.tajawalTextTheme(baseTextTheme);
+
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: AppColors.background,
-      fontFamily: 'Cairo',
-      textTheme: baseTextTheme,
-      appBarTheme: const AppBarTheme(
+      fontFamily: GoogleFonts.tajawal().fontFamily,
+      textTheme: textTheme,
+      appBarTheme: AppBarTheme(
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
         foregroundColor: AppColors.textPrimary,
         titleTextStyle: TextStyle(
-          fontFamily: 'Cairo',
+          fontFamily: GoogleFonts.tajawal().fontFamily,
           fontWeight: FontWeight.w800,
           fontSize: 20,
           color: AppColors.textPrimary,
@@ -85,11 +88,11 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 72,
-        indicatorColor: AppColors.primarySoft,
+        indicatorColor: const Color(0xFFFFF3DF),
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
             fontWeight: states.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w700,
-            color: states.contains(WidgetState.selected) ? AppColors.primary : AppColors.textMuted,
+            color: states.contains(WidgetState.selected) ? AppColors.accent : AppColors.textMuted,
           ),
         ),
       ),
@@ -114,7 +117,7 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        selectedColor: AppColors.primary,
+        selectedColor: AppColors.accent,
         labelStyle: const TextStyle(fontWeight: FontWeight.w700),
         side: const BorderSide(color: AppColors.border),
       ),

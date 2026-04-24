@@ -8,6 +8,7 @@ import '../theme/app_colors.dart';
 import 'admin_dashboard_screen.dart';
 import 'home_shell_screen.dart';
 import 'otp_verification_screen.dart';
+import 'outlet_approval_pending_screen.dart';
 import 'role_selection_screen.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -20,7 +21,7 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  static const _adminEmail = 'Amma1212@gmail.com';
+  static const _adminPhone = '+9647733832043';
   static const _adminPassword = 'ALskQPwo0099@&';
 
   final _formKey = GlobalKey<FormState>();
@@ -28,8 +29,6 @@ class _AuthScreenState extends State<AuthScreen> {
   final _passwordController = TextEditingController();
   final _fullNameController = TextEditingController();
   final _outletNameController = TextEditingController();
-  final _adminEmailController = TextEditingController();
-  final _adminPasswordController = TextEditingController();
 
   final AuthService _authService = AuthService();
   bool _isLogin = true;
@@ -43,8 +42,6 @@ class _AuthScreenState extends State<AuthScreen> {
     _passwordController.dispose();
     _fullNameController.dispose();
     _outletNameController.dispose();
-    _adminEmailController.dispose();
-    _adminPasswordController.dispose();
     super.dispose();
   }
 
@@ -193,23 +190,6 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: _isLoading ? null : () => _enterTestAccount('client'),
-                              child: const Text('دخول تجريبي كعميل'),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: _isLoading ? null : () => _enterTestAccount('outlet'),
-                              child: const Text('دخول تجريبي كمنفذ'),
-                            ),
-                          ),
-                        ],
-                      ),
                     ],
                   ),
                 ),
@@ -229,27 +209,6 @@ class _AuthScreenState extends State<AuthScreen> {
                     style: TextStyle(color: AppColors.info, fontWeight: FontWeight.w700),
                   ),
                 ),
-                ExpansionTile(
-                  title: const Text('دخول المشرف (النظام الحالي)'),
-                  children: [
-                    TextField(
-                      controller: _adminEmailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(labelText: 'البريد الإلكتروني'),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _adminPasswordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(labelText: 'كلمة المرور'),
-                    ),
-                    const SizedBox(height: 8),
-                    OutlinedButton(
-                      onPressed: _isLoading ? null : _loginAdmin,
-                      child: const Text('تسجيل دخول المشرف'),
-                    ),
-                  ],
-                ),
               ],
             ),
           ),
@@ -267,6 +226,18 @@ class _AuthScreenState extends State<AuthScreen> {
     }
 
     final normalizedPhone = IraqiPhoneUtils.normalize(_phoneController.text);
+    final isAdminOutletLogin = _isLogin &&
+        selectedRole == 'outlet' &&
+        normalizedPhone == _adminPhone &&
+        _passwordController.text == _adminPassword;
+    if (isAdminOutletLogin) {
+      _safeNavigate(() {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
+        );
+      });
+      return;
+    }
     setState(() => _isLoading = true);
     var flowHandled = false;
 
@@ -295,6 +266,20 @@ class _AuthScreenState extends State<AuthScreen> {
               password: _passwordController.text,
             );
             if (!mounted) return;
+            final isOutletRegistrationPending = !_isLogin &&
+                selectedRole == 'outlet' &&
+                (profile['approvalStatus'] ?? '').toString() == 'pending';
+            if (isOutletRegistrationPending) {
+              await FirebaseAuth.instance.signOut();
+              if (!mounted) return;
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(
+                  builder: (_) => OutletApprovalPendingScreen(phoneNumber: normalizedPhone),
+                ),
+                (_) => false,
+              );
+              return;
+            }
             _openPostAuthScreen(profile);
           } on FirebaseAuthException catch (e) {
             flowHandled = false;
@@ -415,21 +400,6 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  Future<void> _enterTestAccount(String role) async {
-    setState(() => _isLoading = true);
-    try {
-      final profile = await _authService.loginAsTestAccount(role: role);
-      if (!mounted) return;
-      _openPostAuthScreen(profile);
-    } on FirebaseAuthException catch (e) {
-      _showMessage(_authService.mapFirebaseAuthError(e));
-    } catch (e) {
-      _showMessage('تعذر الدخول التجريبي. حاول مرة أخرى.');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   void _openPostAuthScreen(Map<String, dynamic> profile) {
     _safeNavigate(() {
       Navigator.of(context).pushReplacement(
@@ -438,19 +408,6 @@ class _AuthScreenState extends State<AuthScreen> {
         ),
       );
     });
-  }
-
-  void _loginAdmin() {
-    final isAdminLogin = _adminEmailController.text.trim().toLowerCase() == _adminEmail.toLowerCase() &&
-        _adminPasswordController.text == _adminPassword;
-    if (!isAdminLogin) {
-      _showMessage('بيانات المشرف غير صحيحة');
-      return;
-    }
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
-    );
   }
 
   void _showMessage(String text) {

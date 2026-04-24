@@ -51,6 +51,10 @@ class AuthService {
         return 'الحساب غير مكتمل. يرجى إنشاء حساب جديد أولًا.';
       case 'role-mismatch':
         return 'هذا الحساب مسجل بدور مختلف.';
+      case 'outlet-pending-approval':
+        return 'تم إنشاء حساب المنفذ بنجاح، لكنه بانتظار موافقة الإدارة.';
+      case 'outlet-rejected':
+        return 'تم رفض طلب حساب المنفذ. يرجى التواصل مع الإدارة.';
       case 'captcha-check-failed':
         return 'تعذر التحقق الأمني. حاول مرة أخرى.';
       case 'app-not-authorized':
@@ -109,6 +113,15 @@ class AuthService {
     if (existingRole.isNotEmpty && existingRole != role) {
       throw FirebaseAuthException(code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف.');
     }
+    if (role == 'outlet') {
+      final approvalStatus = (profile['approvalStatus'] ?? '').toString();
+      if (approvalStatus == 'pending') {
+        throw FirebaseAuthException(code: 'outlet-pending-approval', message: 'حساب المنفذ بانتظار موافقة الإدارة.');
+      }
+      if (approvalStatus == 'rejected') {
+        throw FirebaseAuthException(code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
+      }
+    }
 
     final savedHash = (profile['passwordHash'] ?? '').toString().trim();
     if (savedHash.isEmpty) {
@@ -163,6 +176,15 @@ class AuthService {
       if (existingRole.isNotEmpty && existingRole != role) {
         throw FirebaseAuthException(code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف');
       }
+      if (role == 'outlet') {
+        final approvalStatus = (profile['approvalStatus'] ?? '').toString();
+        if (approvalStatus == 'pending') {
+          throw FirebaseAuthException(code: 'outlet-pending-approval', message: 'حساب المنفذ بانتظار موافقة الإدارة.');
+        }
+        if (approvalStatus == 'rejected') {
+          throw FirebaseAuthException(code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
+        }
+      }
 
       var savedHash = (profile['passwordHash'] ?? '').toString();
       if (savedHash.isEmpty) {
@@ -207,9 +229,26 @@ class AuthService {
 
     if (role == 'outlet') {
       payload['outletName'] = (outletName ?? '').trim();
+      payload['approvalStatus'] = 'pending';
+      payload['approvalRequestedAt'] = FieldValue.serverTimestamp();
+      payload['approvalDecisionAt'] = null;
+      payload['approvedBy'] = '';
     }
 
     await userDocRef.set(payload, SetOptions(merge: true));
+
+    if (role == 'outlet') {
+      await _firestore.collection('notifications').add({
+        'toUserId': 'admin',
+        'type': 'outlet_approval_request',
+        'title': 'طلب منفذ جديد',
+        'body': 'تم تقديم طلب جديد من منفذ: ${fullName.trim().isEmpty ? normalizedPhone : fullName.trim()}',
+        'requestUid': uid,
+        'requestPhone': normalizedPhone,
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
 
     await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
     final fresh = await userDocRef.get();
