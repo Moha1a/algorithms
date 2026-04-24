@@ -69,7 +69,7 @@ class DeviceRegistrationService {
     if (uid.trim().isEmpty) return;
 
     if (_shouldSkipIosSimulatorRegistration) {
-      debugPrint('DEVICE REGISTRATION SKIPPED ON IOS SIMULATOR');
+      debugPrint('DEVICE_REGISTER_SKIPPED_IOS_SIMULATOR');
       return;
     }
 
@@ -77,7 +77,7 @@ class DeviceRegistrationService {
     try {
       token = await FirebaseMessaging.instance.getToken();
     } catch (error, stackTrace) {
-      debugPrint('DEVICE REGISTRATION FAILED BUT IGNORED: $error');
+      debugPrint('DEVICE_REGISTER_FAILED_IGNORED: $error');
       debugPrint('$stackTrace');
       return;
     }
@@ -127,7 +127,7 @@ class DeviceRegistrationService {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (error, stackTrace) {
-      debugPrint('DEVICE REGISTRATION FAILED BUT IGNORED: $error');
+      debugPrint('DEVICE_REGISTER_FAILED_IGNORED: $error');
       debugPrint('$stackTrace');
     }
   }
@@ -206,7 +206,7 @@ class DeviceRegistrationService {
         packageName: packageName,
       );
     } catch (error, stackTrace) {
-      debugPrint('DEVICE REGISTRATION FAILED BUT IGNORED: $error');
+      debugPrint('DEVICE_REGISTER_FAILED_IGNORED: $error');
       debugPrint('$stackTrace');
     }
   }

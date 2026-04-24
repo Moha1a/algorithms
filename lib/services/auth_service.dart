@@ -146,7 +146,7 @@ class AuthService {
     required String governorate,
     String? outletName,
   }) async {
-    debugPrint('AUTH LOGIN START');
+    debugPrint('AUTH_SERVICE_START');
     try {
       final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
       final trimmedPassword = password.trim();
@@ -155,7 +155,7 @@ class AuthService {
       }
 
       final userCredential = await _auth.signInWithCredential(credential);
-      debugPrint('AUTH LOGIN SUCCESS');
+      debugPrint('AUTH_SERVICE_SUCCESS');
       final uid = userCredential.user?.uid;
       if (uid == null) {
         throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر تسجيل الدخول');
@@ -173,12 +173,12 @@ class AuthService {
       }
 
       final userDocRef = _firestore.collection('users').doc(uid);
-      debugPrint('PROFILE LOAD START');
+      debugPrint('PROFILE_LOAD_START');
       DocumentSnapshot<Map<String, dynamic>> snap;
       try {
         snap = await userDocRef.get().timeout(const Duration(seconds: 8));
       } catch (error, stackTrace) {
-        debugPrint('PROFILE LOAD FAILED: $error');
+        debugPrint('PROFILE_LOAD_FAILED: $error');
         debugPrint('$stackTrace');
         throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
       }
@@ -226,10 +226,10 @@ class AuthService {
         final fresh = await userDocRef.get().timeout(const Duration(seconds: 8));
         final freshData = fresh.data();
         if (freshData == null) {
-          debugPrint('PROFILE LOAD FAILED: null profile after login');
+          debugPrint('PROFILE_LOAD_FAILED: null profile after login');
           throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
         }
-        debugPrint('PROFILE LOAD SUCCESS');
+        debugPrint('PROFILE_LOAD_SUCCESS');
         return freshData;
       }
 
@@ -277,14 +277,14 @@ class AuthService {
       final fresh = await userDocRef.get().timeout(const Duration(seconds: 8));
       final freshData = fresh.data();
       if (freshData == null) {
-        debugPrint('PROFILE LOAD FAILED: null profile after registration');
+        debugPrint('PROFILE_LOAD_FAILED: null profile after registration');
         throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
       }
-      debugPrint('PROFILE LOAD SUCCESS');
+      debugPrint('PROFILE_LOAD_SUCCESS');
       return freshData;
     } catch (error, stackTrace) {
       if (error is FirebaseAuthException) rethrow;
-      debugPrint('PROFILE LOAD FAILED: $error');
+      debugPrint('PROFILE_LOAD_FAILED: $error');
       debugPrint('$stackTrace');
       throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
     }
@@ -378,11 +378,11 @@ class AuthService {
   }
 
   Future<void> _safeRegisterDevice() async {
-    debugPrint('DEVICE REGISTRATION START');
+    debugPrint('DEVICE_REGISTER_START');
     try {
       await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
     } catch (error, stackTrace) {
-      debugPrint('DEVICE REGISTRATION FAILED BUT IGNORED: $error');
+      debugPrint('DEVICE_REGISTER_FAILED_IGNORED: $error');
       debugPrint('$stackTrace');
     }
   }

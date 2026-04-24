@@ -218,11 +218,10 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _submit(String selectedRole) async {
-    debugPrint('LOGIN BUTTON PRESSED');
-    debugPrint('LOGIN START');
+    debugPrint('LOGIN_BUTTON_PRESSED');
     final formState = _formKey.currentState;
     if (formState == null || !formState.validate()) return;
-    debugPrint('LOGIN INPUT VALIDATED');
+    debugPrint('LOGIN_TRY_START');
 
     if (kIsWeb) {
       _showMessage('تسجيل OTP المدمج متاح على Android/iOS فقط في هذا الإصدار.');
@@ -276,7 +275,7 @@ class _AuthScreenState extends State<AuthScreen> {
             if (isOutletRegistrationPending) {
               await FirebaseAuth.instance.signOut();
               if (!mounted) return;
-              debugPrint('LOGIN NAVIGATION START');
+              debugPrint('NAVIGATION_START');
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(
                   builder: (_) => OutletApprovalPendingScreen(phoneNumber: normalizedPhone),
@@ -285,18 +284,16 @@ class _AuthScreenState extends State<AuthScreen> {
               );
               return;
             }
-            debugPrint('LOGIN NAVIGATION START');
+            debugPrint('NAVIGATION_START');
             _openPostAuthScreen(profile);
           } on FirebaseAuthException catch (e) {
             flowHandled = false;
-            debugPrint('LOGIN FAILED: ${e.code}');
-            debugPrint('LOGIN FAILED CONTROLLED');
+            debugPrint('LOGIN_CATCH_ERROR: ${e.code}');
             _showMessage(_authService.mapFirebaseAuthError(e));
           } catch (e, stackTrace) {
             flowHandled = false;
-            debugPrint('LOGIN FAILED: $e');
+            debugPrint('LOGIN_CATCH_ERROR: $e');
             debugPrint('$stackTrace');
-            debugPrint('LOGIN FAILED CONTROLLED');
             _showMessage('حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.');
           } finally {
             if (mounted) setState(() => _isLoading = false);
@@ -304,8 +301,7 @@ class _AuthScreenState extends State<AuthScreen> {
         },
         verificationFailed: (e) {
           flowHandled = true;
-          debugPrint('LOGIN FAILED: ${e.code}');
-          debugPrint('LOGIN FAILED CONTROLLED');
+          debugPrint('LOGIN_CATCH_ERROR: ${e.code}');
           _showMessage(_authService.mapFirebaseAuthError(e));
           if (mounted) setState(() => _isLoading = false);
         },
@@ -314,7 +310,7 @@ class _AuthScreenState extends State<AuthScreen> {
           flowHandled = true;
           if (!mounted) return;
           setState(() => _isLoading = false);
-          debugPrint('LOGIN NAVIGATION START');
+          debugPrint('NAVIGATION_START');
           _safeNavigate(() {
             Navigator.of(context).push(
               MaterialPageRoute(
@@ -339,14 +335,12 @@ class _AuthScreenState extends State<AuthScreen> {
         },
       );
     } on FirebaseAuthException catch (e) {
-      debugPrint('LOGIN FAILED: ${e.code}');
-      debugPrint('LOGIN FAILED CONTROLLED');
+      debugPrint('LOGIN_CATCH_ERROR: ${e.code}');
       _showMessage(_authService.mapFirebaseAuthError(e));
       if (mounted) setState(() => _isLoading = false);
     } catch (e, stackTrace) {
-      debugPrint('LOGIN FAILED: $e');
+      debugPrint('LOGIN_CATCH_ERROR: $e');
       debugPrint('$stackTrace');
-      debugPrint('LOGIN FAILED CONTROLLED');
       _showMessage('حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.');
       if (mounted) setState(() => _isLoading = false);
     }
