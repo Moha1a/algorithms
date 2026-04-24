@@ -59,6 +59,8 @@ class AuthService {
         return 'تعذر التحقق الأمني. حاول مرة أخرى.';
       case 'app-not-authorized':
         return 'التطبيق غير مصرح لهذا المشروع.';
+      case 'user-profile-load-failed':
+        return 'تعذر تحميل بيانات الحساب. حاول مرة أخرى.';
       default:
         return error.message ?? 'حدث خطأ في المصادقة. حاول مرة أخرى.';
     }
@@ -98,7 +100,8 @@ class AuthService {
         .collection('users')
         .where('phoneNumber', isEqualTo: normalizedPhone)
         .limit(5)
-        .get();
+        .get()
+        .timeout(const Duration(seconds: 8));
 
     if (snap.docs.isEmpty) {
       throw FirebaseAuthException(code: 'missing-user-doc', message: 'هذا الرقم غير مسجل بعد.');
@@ -143,6 +146,7 @@ class AuthService {
     required String governorate,
     String? outletName,
   }) async {
+    debugPrint('AUTH SERVICE LOGIN START');
     final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
     final trimmedPassword = password.trim();
     if (trimmedPassword.length < 6) {
@@ -150,6 +154,7 @@ class AuthService {
     }
 
     final userCredential = await _auth.signInWithCredential(credential);
+    debugPrint('FIREBASE AUTH LOGIN SUCCESS');
     final uid = userCredential.user?.uid;
     if (uid == null) {
       throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر تسجيل الدخول');
@@ -167,7 +172,15 @@ class AuthService {
     }
 
     final userDocRef = _firestore.collection('users').doc(uid);
-    final snap = await userDocRef.get();
+    debugPrint('USER PROFILE LOAD START');
+    DocumentSnapshot<Map<String, dynamic>> snap;
+    try {
+      snap = await userDocRef.get().timeout(const Duration(seconds: 8));
+    } catch (error, stackTrace) {
+      debugPrint('USER PROFILE LOAD FAILED: $error');
+      debugPrint('$stackTrace');
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+    }
     final passwordHash = _hashPassword(trimmedPassword);
 
     if (snap.exists && snap.data() != null) {
@@ -205,8 +218,9 @@ class AuthService {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
-      final fresh = await userDocRef.get();
+      await _safeRegisterDevice();
+      final fresh = await userDocRef.get().timeout(const Duration(seconds: 8));
+      debugPrint('USER PROFILE LOAD SUCCESS');
       return fresh.data()!;
     }
 
@@ -250,8 +264,9 @@ class AuthService {
       });
     }
 
-    await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
-    final fresh = await userDocRef.get();
+    await _safeRegisterDevice();
+    final fresh = await userDocRef.get().timeout(const Duration(seconds: 8));
+    debugPrint('USER PROFILE LOAD SUCCESS');
     return fresh.data()!;
   }
 
@@ -337,9 +352,19 @@ class AuthService {
       'createdAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
+    await _safeRegisterDevice();
     final fresh = await _firestore.collection('users').doc(uid).get();
     return fresh.data()!;
+  }
+
+  Future<void> _safeRegisterDevice() async {
+    debugPrint('DEVICE REGISTRATION START');
+    try {
+      await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
+    } catch (error, stackTrace) {
+      debugPrint('DEVICE REGISTRATION FAILED: $error');
+      debugPrint('$stackTrace');
+    }
   }
 
   Future<void> logout() async {

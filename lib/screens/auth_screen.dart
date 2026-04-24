@@ -218,7 +218,9 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _submit(String selectedRole) async {
+    debugPrint('LOGIN START');
     if (!_formKey.currentState!.validate()) return;
+    debugPrint('LOGIN INPUT VALIDATED');
 
     if (kIsWeb) {
       _showMessage('تسجيل OTP المدمج متاح على Android/iOS فقط في هذا الإصدار.');
@@ -238,7 +240,7 @@ class _AuthScreenState extends State<AuthScreen> {
       });
       return;
     }
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isLoading = true);
     var flowHandled = false;
 
     try {
@@ -272,6 +274,7 @@ class _AuthScreenState extends State<AuthScreen> {
             if (isOutletRegistrationPending) {
               await FirebaseAuth.instance.signOut();
               if (!mounted) return;
+              debugPrint('LOGIN NAVIGATION START');
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(
                   builder: (_) => OutletApprovalPendingScreen(phoneNumber: normalizedPhone),
@@ -280,14 +283,24 @@ class _AuthScreenState extends State<AuthScreen> {
               );
               return;
             }
+            debugPrint('LOGIN NAVIGATION START');
             _openPostAuthScreen(profile);
           } on FirebaseAuthException catch (e) {
             flowHandled = false;
+            debugPrint('LOGIN FAILED: ${e.code}');
             _showMessage(_authService.mapFirebaseAuthError(e));
+          } catch (e, stackTrace) {
+            flowHandled = false;
+            debugPrint('LOGIN FAILED: $e');
+            debugPrint('$stackTrace');
+            _showMessage('حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.');
+          } finally {
+            if (mounted) setState(() => _isLoading = false);
           }
         },
         verificationFailed: (e) {
           flowHandled = true;
+          debugPrint('LOGIN FAILED: ${e.code}');
           _showMessage(_authService.mapFirebaseAuthError(e));
           if (mounted) setState(() => _isLoading = false);
         },
@@ -296,6 +309,7 @@ class _AuthScreenState extends State<AuthScreen> {
           flowHandled = true;
           if (!mounted) return;
           setState(() => _isLoading = false);
+          debugPrint('LOGIN NAVIGATION START');
           _safeNavigate(() {
             Navigator.of(context).push(
               MaterialPageRoute(
@@ -319,12 +333,17 @@ class _AuthScreenState extends State<AuthScreen> {
           if (mounted) setState(() => _isLoading = false);
         },
       );
-    } catch (e) {
+    } on FirebaseAuthException catch (e) {
+      debugPrint('LOGIN FAILED: ${e.code}');
       _showMessage(_authService.mapFirebaseAuthError(e));
+      if (mounted) setState(() => _isLoading = false);
+    } catch (e, stackTrace) {
+      debugPrint('LOGIN FAILED: $e');
+      debugPrint('$stackTrace');
+      _showMessage('حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.');
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
 
   Future<void> _openForgotPasswordFlow() async {
     final controller = TextEditingController();
@@ -360,7 +379,7 @@ class _AuthScreenState extends State<AuthScreen> {
     }
 
     final normalized = IraqiPhoneUtils.normalize(controller.text);
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isLoading = true);
     var flowHandled = false;
     try {
       await _authService.verifyPhoneNumber(
@@ -411,6 +430,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   void _showMessage(String text) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
