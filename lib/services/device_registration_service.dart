@@ -9,7 +9,7 @@ import 'package:flutter/foundation.dart';
 class DeviceRegistrationService {
   DeviceRegistrationService._();
   static final DeviceRegistrationService instance = DeviceRegistrationService._();
-  static const bool isPreviewSafeMode =
+  static const bool appPreviewSafeMode =
       bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
 
   StreamSubscription<String>? _tokenRefreshSub;
@@ -17,7 +17,7 @@ class DeviceRegistrationService {
   String _resolveDeviceId(String token) => token.hashCode.abs().toString();
 
   bool get _shouldSkipIosSimulatorRegistration {
-    if (isPreviewSafeMode) return true;
+    if (appPreviewSafeMode) return true;
     if (kIsWeb) return false;
     return !kReleaseMode && Platform.isIOS;
   }
