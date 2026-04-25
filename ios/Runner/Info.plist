@@ -42,10 +42,21 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>يحتاج تطبيق منفذك إلى الوصول إلى موقعك لتحديد أقرب منفذ وتحسين إنشاء الطلبات.</string>
+	<string>يحتاج تطبيق منفذك إلى موقعك لتحديد أقرب منفذ وتحسين طلبات السحب والشحن.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>يحتاج تطبيق منفذك إلى الوصول إلى موقعك لتحديد أقرب منفذ وتحسين إنشاء الطلبات.</string>
+	<string>يحتاج تطبيق منفذك إلى موقعك أثناء الاستخدام لتسهيل متابعة الرحلات وتحديد الموقع بدقة.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>يحتاج تطبيق منفذك إلى الوصول إلى موقعك لتحديد أقرب منفذ وتحسين إنشاء الطلبات.</string>
+	<string>يحتاج تطبيق منفذك إلى موقعك لتحسين تجربة الطلبات ومتابعة الرحلات.</string>
+	<key>GMSApiKey</key>
+	<string>$(GMS_API_KEY)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.REPLACE_WITH_REVERSED_CLIENT_ID</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
