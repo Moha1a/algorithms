@@ -23,10 +23,10 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  static const _adminPhone = '+9647733832043';
-  static const _adminPassword = 'ALskQPwo0099@&';
   static const bool appPreviewSafeMode =
       bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
+  static const _adminPhone = '+9647733832043';
+  static const _adminPassword = 'ALskQPwo0099@&';
 
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
@@ -88,6 +88,21 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
+                if (appPreviewSafeMode) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.info.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.info.withOpacity(0.35)),
+                    ),
+                    child: const Text(
+                      'وضع المعاينة: تم تجاوز التحقق بالرمز لأغراض الاختبار فقط',
+                      style: TextStyle(color: AppColors.info, fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -253,22 +268,35 @@ class _AuthScreenState extends State<AuthScreen> {
       debugPrint('APP_PREVIEW_SAFE_MODE_ENABLED');
       debugPrint('PHONE_AUTH_SKIPPED_IN_PREVIEW');
       debugPrint('LOGIN_PREVIEW_SAFE_PATH_START');
+      _showMessage('وضع المعاينة: تم تجاوز التحقق بالرمز لأغراض الاختبار فقط');
       try {
-        if (!_isLogin) {
-          throw FirebaseAuthException(
-            code: 'preview-phone-auth-disabled',
-            message: 'إنشاء حساب عبر OTP غير متاح في وضع المعاينة.',
-          );
-        }
-        final profile = await _authService.loginWithPhonePasswordPreview(
+        final profile = await _authService.previewBypassOtpForLoginOrRegistration(
           role: selectedRole,
           phoneNumber: normalizedPhone,
           password: _passwordController.text,
+          isRegistration: !_isLogin,
+          fullName: _fullNameController.text,
+          governorate: _selectedGovernorate,
+          outletName: _outletNameController.text,
         );
         if (!mounted) return;
         debugPrint('LOGIN_PREVIEW_SAFE_PATH_SUCCESS');
         debugPrint('NAVIGATION_START');
-        _openPostAuthScreen(profile);
+        final isOutletRegistrationPending = !_isLogin &&
+            selectedRole == 'outlet' &&
+            (profile['approvalStatus'] ?? '').toString() == 'pending';
+        if (isOutletRegistrationPending) {
+          _safeNavigate(() {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (_) => OutletApprovalPendingScreen(phoneNumber: normalizedPhone),
+              ),
+              (_) => false,
+            );
+          });
+        } else {
+          _openPostAuthScreen(profile);
+        }
       } on FirebaseAuthException catch (e) {
         debugPrint('LOGIN_PREVIEW_SAFE_PATH_FAILED: ${e.code}');
         debugPrint('LOGIN_CATCH_ERROR: ${e.code}');

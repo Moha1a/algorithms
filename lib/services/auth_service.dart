@@ -81,10 +81,9 @@ class AuthService {
   }) {
     if (appPreviewSafeMode) {
       debugPrint('PHONE_AUTH_SKIPPED_IN_PREVIEW');
-      throw FirebaseAuthException(
-        code: 'preview-phone-auth-disabled',
-        message: 'OTP غير متاح في وضع المعاينة.',
-      );
+      codeSent('preview-bypass-verification-id', forceResendingToken);
+      codeAutoRetrievalTimeout('preview-bypass-verification-id');
+      return Future.value();
     }
     return _auth.verifyPhoneNumber(
       phoneNumber: phoneNumber,
@@ -720,4 +719,70 @@ class AuthService {
       await batch.commit();
     }
   }
+
+  Future<Map<String, dynamic>> previewBypassOtpForLoginOrRegistration({
+    required String role,
+    required String phoneNumber,
+    required String password,
+    required bool isRegistration,
+    required String fullName,
+    required String governorate,
+    String? outletName,
+  }) async {
+    final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
+    final trimmedPassword = password.trim();
+    if (trimmedPassword.length < 6) {
+      throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+    }
+
+    if (!isRegistration) {
+      return loginWithPhonePasswordPreview(role: role, phoneNumber: normalizedPhone, password: trimmedPassword);
+    }
+
+    final existing = await _firestore
+        .collection('users')
+        .where('phoneNumber', isEqualTo: normalizedPhone)
+        .limit(10)
+        .get()
+        .timeout(const Duration(seconds: 8));
+
+    Map<String, dynamic>? existingProfile;
+    for (final doc in existing.docs) {
+      final data = doc.data();
+      if ((data['role'] ?? '').toString() == role) {
+        existingProfile = data;
+        break;
+      }
+    }
+    if (existingProfile != null) {
+      return existingProfile;
+    }
+
+    final generatedUid = 'preview_${DateTime.now().millisecondsSinceEpoch}';
+    final profile = <String, dynamic>{
+      'uid': generatedUid,
+      'fullName': fullName.trim(),
+      'role': role,
+      'governorate': governorate.trim(),
+      'phoneNumber': normalizedPhone,
+      'passwordHash': _hashPassword(trimmedPassword),
+      'isPreviewBypass': true,
+    };
+
+    if (role == 'outlet') {
+      profile['outletName'] = (outletName ?? '').trim();
+      profile['approvalStatus'] = 'pending';
+    }
+
+    try {
+      await _firestore.collection('users').doc(generatedUid).set(profile, SetOptions(merge: true));
+      final fresh = await _firestore.collection('users').doc(generatedUid).get();
+      return fresh.data() ?? profile;
+    } catch (error, stackTrace) {
+      debugPrint('[AuthService] preview registration write skipped: $error');
+      debugPrint('$stackTrace');
+      return profile;
+    }
+  }
+
 }
