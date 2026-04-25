@@ -266,7 +266,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
     if (appPreviewSafeMode) {
       debugPrint('APP_PREVIEW_SAFE_MODE_ENABLED');
-      debugPrint('[OTP FLOW] skipped in APP_PREVIEW_SAFE_MODE');
+      debugPrint('PHONE_AUTH_SKIPPED_PREVIEW_ONLY');
       debugPrint('[LOGIN FLOW] preview-safe path start');
       _showMessage('وضع المعاينة: تم تجاوز التحقق بالرمز لأغراض الاختبار فقط');
       try {
@@ -298,6 +298,7 @@ class _AuthScreenState extends State<AuthScreen> {
           _openPostAuthScreen(profile);
         }
       } on FirebaseAuthException catch (e) {
+      debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
         debugPrint('LOGIN_PREVIEW_SAFE_PATH_FAILED: ${e.code}');
         debugPrint('[LOGIN FLOW] error code: ${e.code}');
         debugPrint('[LOGIN FLOW] controlled failure');
@@ -371,6 +372,7 @@ class _AuthScreenState extends State<AuthScreen> {
             debugPrint('[LOGIN FLOW] navigation start');
             _openPostAuthScreen(profile);
           } on FirebaseAuthException catch (e) {
+      debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
             flowHandled = false;
             debugPrint('[LOGIN FLOW] error code: ${e.code}');
             debugPrint('[LOGIN FLOW] controlled failure');
@@ -389,6 +391,7 @@ class _AuthScreenState extends State<AuthScreen> {
         },
         verificationFailed: (e) {
           flowHandled = true;
+          debugPrint('PHONE_AUTH_VERIFY_FAILED');
           debugPrint('[LOGIN FLOW] error code: ${e.code}');
           debugPrint('[LOGIN FLOW] controlled failure');
           _showMessage(_authService.mapFirebaseAuthError(e));
@@ -396,6 +399,7 @@ class _AuthScreenState extends State<AuthScreen> {
           if (mounted) setState(() => _isLoading = false);
         },
         codeSent: (verificationId, resendToken) {
+          debugPrint('PHONE_AUTH_CODE_SENT');
           if (flowHandled) return;
           flowHandled = true;
           if (!mounted) return;
@@ -425,18 +429,21 @@ class _AuthScreenState extends State<AuthScreen> {
         },
       );
     } on FirebaseAuthException catch (e) {
+      debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
       debugPrint('[LOGIN FLOW] error code: ${e.code}');
       debugPrint('[LOGIN FLOW] controlled failure');
       _showMessage(_authService.mapFirebaseAuthError(e));
       _showDebugErrorDialog(e.toString());
       if (mounted) setState(() => _isLoading = false);
     } on FirebaseException catch (e) {
+      debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
       debugPrint('[LOGIN FLOW] error code: ${e.code}');
       debugPrint('[LOGIN FLOW] controlled failure');
       _showMessage('حدث خطأ في الخدمة. حاول مرة أخرى.');
       _showDebugErrorDialog(e.toString());
       if (mounted) setState(() => _isLoading = false);
     } on PlatformException catch (e) {
+      debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
       debugPrint('[LOGIN FLOW] error code: ${e.code}');
       debugPrint('[LOGIN FLOW] controlled failure');
       _showMessage('حدث خطأ بالنظام. حاول مرة أخرى.');
@@ -500,10 +507,12 @@ class _AuthScreenState extends State<AuthScreen> {
         verificationCompleted: (_) {},
         verificationFailed: (e) {
           flowHandled = true;
+          debugPrint('PHONE_AUTH_VERIFY_FAILED');
           _showMessage(_authService.mapFirebaseAuthError(e));
           if (mounted) setState(() => _isLoading = false);
         },
         codeSent: (verificationId, resendToken) {
+          debugPrint('PHONE_AUTH_CODE_SENT');
           if (flowHandled) return;
           flowHandled = true;
           if (!mounted) return;

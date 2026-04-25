@@ -68,9 +68,10 @@ class DeviceRegistrationService {
     String packageName = 'unknown',
   }) async {
     if (uid.trim().isEmpty) return;
+    debugPrint('DEVICE_REGISTRATION_START');
 
     if (_shouldSkipIosSimulatorRegistration) {
-      debugPrint('[DEVICE REGISTRATION] skipped in APP_PREVIEW_SAFE_MODE');
+      debugPrint('PUSH_SKIPPED_PREVIEW_ONLY');
       return;
     }
 
@@ -78,13 +79,13 @@ class DeviceRegistrationService {
     try {
       token = await FirebaseMessaging.instance.getToken();
     } catch (error, stackTrace) {
-      debugPrint('[DEVICE REGISTRATION] failed (ignored): $error');
+      debugPrint('DEVICE_REGISTRATION_FAILED_IGNORED: $error');
       debugPrint('$stackTrace');
       return;
     }
 
     if (token == null || token.trim().isEmpty) {
-      debugPrint('[DEVICE REGISTRATION] no token for uid=$uid');
+      debugPrint('DEVICE_REGISTRATION_FAILED_IGNORED: no token uid=$uid');
       return;
     }
 
@@ -127,8 +128,9 @@ class DeviceRegistrationService {
         'platform': platform,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      debugPrint('DEVICE_REGISTRATION_SUCCESS');
     } catch (error, stackTrace) {
-      debugPrint('[DEVICE REGISTRATION] failed (ignored): $error');
+      debugPrint('DEVICE_REGISTRATION_FAILED_IGNORED: $error');
       debugPrint('$stackTrace');
     }
   }
@@ -207,7 +209,7 @@ class DeviceRegistrationService {
         packageName: packageName,
       );
     } catch (error, stackTrace) {
-      debugPrint('[DEVICE REGISTRATION] failed (ignored): $error');
+      debugPrint('DEVICE_REGISTRATION_FAILED_IGNORED: $error');
       debugPrint('$stackTrace');
     }
   }

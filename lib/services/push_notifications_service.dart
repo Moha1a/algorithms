@@ -79,11 +79,12 @@ class PushNotificationsService {
 
   Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
     if (_initialized) return;
+    debugPrint('PUSH_INIT_START');
     _initialized = true;
 
     try {
       if (_shouldSkipPushForPreview()) {
-        debugPrint('[PUSH INIT] skipped in APP_PREVIEW_SAFE_MODE');
+        debugPrint('PUSH_SKIPPED_PREVIEW_ONLY');
         return;
       }
       await ensureLocalNotificationsInitialized();
@@ -147,6 +148,7 @@ class PushNotificationsService {
       });
 
       final currentUser = FirebaseAuth.instance.currentUser;
+      debugPrint('PUSH_INIT_SUCCESS');
       if (currentUser != null) {
         try {
           await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
@@ -157,7 +159,7 @@ class PushNotificationsService {
       }
     } catch (error, stackTrace) {
       _initialized = false;
-      debugPrint('[PUSH INIT] initialize failed: $error');
+      debugPrint('PUSH_INIT_FAILED_IGNORED: $error');
       debugPrint('$stackTrace');
       rethrow;
     }
@@ -165,7 +167,7 @@ class PushNotificationsService {
 
   Future<void> _requestPermissions() async {
     if (_shouldSkipPushForPreview()) {
-      debugPrint('[PUSH INIT] skipped in APP_PREVIEW_SAFE_MODE');
+      debugPrint('PUSH_SKIPPED_PREVIEW_ONLY');
       return;
     }
     try {
@@ -175,7 +177,7 @@ class PushNotificationsService {
         sound: true,
         provisional: false,
       );
-      debugPrint('[PUSH INIT] Firebase permission: ${settings.authorizationStatus}');
+      debugPrint('PUSH_INIT_SUCCESS: permission=${settings.authorizationStatus}');
     } catch (error, stackTrace) {
       if (_isExpectedSimulatorPushError(error)) {
         debugPrint('[PushNotificationsService] simulator push permission issue ignored: $error');
@@ -231,8 +233,8 @@ class PushNotificationsService {
     if (nav == null) return;
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || uid.trim().isEmpty) return;
-    final userSnap = FirebaseFirestore.instance.collection('users').doc(uid).get();
-    final profile = (await userSnap).data();
+    final userSnap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final profile = userSnap.data();
     if (profile == null) return;
     final role = (profile['role'] ?? '').toString();
     final mapIndex = role == 'outlet' ? 3 : 1;

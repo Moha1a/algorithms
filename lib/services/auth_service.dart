@@ -81,13 +81,14 @@ class AuthService {
     int? forceResendingToken,
   }) {
     if (appPreviewSafeMode) {
-      debugPrint('[OTP FLOW] skipped in APP_PREVIEW_SAFE_MODE');
+      debugPrint('PHONE_AUTH_SKIPPED_PREVIEW_ONLY');
       codeSent('preview-bypass-verification-id', forceResendingToken);
       codeAutoRetrievalTimeout('preview-bypass-verification-id');
       return Future.value();
     }
     try {
-      debugPrint('[OTP FLOW] verifyPhoneNumber start for=$phoneNumber');
+      debugPrint('PHONE_AUTH_START');
+      debugPrint('PHONE_AUTH_VERIFY_START');
       return _auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
         verificationCompleted: verificationCompleted,
@@ -102,6 +103,7 @@ class AuthService {
     } catch (error, stackTrace) {
       debugPrint('[OTP FLOW] verifyPhoneNumber failed: $error');
       debugPrint('$stackTrace');
+      debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
       throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر بدء التحقق بالرمز. حاول مرة أخرى.');
     }
   }
@@ -784,7 +786,7 @@ class AuthService {
     required String role,
     required String normalizedPhone,
   }) async {
-    debugPrint('[PROFILE LOAD] resolve start');
+    debugPrint('PROFILE_RESOLVE_START');
     final currentUser = _auth.currentUser;
     final currentUid = currentUser?.uid ?? '';
     final currentPhone = IraqiPhoneUtils.normalize(currentUser?.phoneNumber ?? normalizedPhone);

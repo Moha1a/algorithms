@@ -24,10 +24,94 @@ class MapScreen extends StatelessWidget {
     return entered ?? 0;
   }
 
+  String _safeString(dynamic value, {String fallback = ''}) {
+    if (value == null) return fallback;
+    final text = value.toString().trim();
+    return text.isEmpty ? fallback : text;
+  }
+
+  double _safeDouble(dynamic value, {double fallback = 0}) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  void _showControlledMessage(BuildContext context, String message) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openBookingFromMapTap({
+    required BuildContext context,
+    required QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    required String role,
+    required String uid,
+  }) async {
+    debugPrint('MAP_BOOKING_TAP');
+    try {
+      final raw = doc.data();
+      final bookingDocId = _safeString(doc.id, fallback: '');
+      final bookingId = _safeString(raw['bookingId'], fallback: bookingDocId);
+      final clientId = _safeString(raw['clientId']);
+      final createdById = _safeString(raw['createdById']);
+      final outletId = _safeString(raw['outletId']);
+      final status = _safeString(raw['status'], fallback: 'pending');
+      final amount = _safeDouble(raw['amount']);
+      final price = _safeDouble(raw['price']);
+      final priceProposalsRaw = raw['priceProposals'];
+      final proposalsCount = (priceProposalsRaw is List) ? priceProposalsRaw.length : 0;
+
+      debugPrint('MAP_BOOKING_TAP_DATA bookingId=$bookingId docId=$bookingDocId clientId=$clientId createdById=$createdById outletId=$outletId status=$status amount=$amount price=$price proposals=$proposalsCount');
+
+      if (bookingDocId.isEmpty) {
+        _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+        return;
+      }
+
+      debugPrint('MAP_BOOKING_OPEN_START');
+      final fresh = await FirebaseFirestore.instance.collection('bookings').doc(bookingDocId).get().timeout(const Duration(seconds: 8));
+      if (!fresh.exists || fresh.data() == null) {
+        _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+        return;
+      }
+
+      final freshData = fresh.data()!;
+      final lat = _safeDouble(freshData['clientLat'], fallback: double.nan);
+      final lng = _safeDouble(freshData['clientLng'], fallback: double.nan);
+      final hasValidCoordinates = lat.isFinite && lng.isFinite;
+      if (!hasValidCoordinates) {
+        _showControlledMessage(context, 'تعذر تحديد الإحداثيات بدقة، سيتم فتح تفاصيل الطلب بشكل آمن.');
+      }
+
+      if (!context.mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => BookingMapDetailsScreen(
+            bookingDocId: bookingDocId,
+            role: role,
+            currentUserId: uid,
+          ),
+        ),
+      );
+    } on FirebaseException catch (error, stackTrace) {
+      debugPrint('MAP_BOOKING_OPEN_FAILED_CONTROLLED: $error');
+      debugPrint('$stackTrace');
+      _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+    } on TimeoutException catch (error, stackTrace) {
+      debugPrint('MAP_BOOKING_OPEN_FAILED_CONTROLLED: $error');
+      debugPrint('$stackTrace');
+      _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+    } catch (error, stackTrace) {
+      debugPrint('MAP_BOOKING_OPEN_FAILED_CONTROLLED: $error');
+      debugPrint('$stackTrace');
+      _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final uid = (profile['uid'] ?? '').toString();
-    final role = (profile['role'] ?? '').toString();
+    debugPrint('MAP_TAB_OPEN');
+    final uid = _safeString(profile['uid']);
+    final role = _safeString(profile['role']);
     final field = role == 'outlet' ? 'outletId' : 'clientId';
     final stream = FirebaseFirestore.instance
         .collection('bookings')
@@ -40,10 +124,16 @@ class MapScreen extends StatelessWidget {
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: stream,
         builder: (context, snapshot) {
+          debugPrint('MAP_BOOKINGS_LOAD_START');
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
+          if (snapshot.hasError) {
+            debugPrint('MAP_BOOKING_OPEN_FAILED_CONTROLLED: ${snapshot.error}');
+            return const Center(child: Text('تعذر تحميل الطلبات حالياً.'));
+          }
           final docs = snapshot.data?.docs ?? const [];
+          debugPrint('MAP_BOOKINGS_LOAD_SUCCESS count=${docs.length}');
           if (docs.isEmpty) {
             return const Center(
               child: Text('ليس لديك طلبات حالية'),
@@ -55,23 +145,20 @@ class MapScreen extends StatelessWidget {
             itemCount: docs.length,
             itemBuilder: (_, i) {
               final b = docs[i].data();
+              final safeAmount = _safeDouble(b['amount']);
               return Card(
                 child: ListTile(
-                  title: Text('رحلة نشطة: ${(b['bookingId'] ?? docs[i].id).toString()}'),
+                  title: Text('رحلة نشطة: ${_safeString(b['bookingId'], fallback: docs[i].id)}'),
                   subtitle: Text(
-                    'الحالة: ${(b['status'] ?? '').toString()} • المبلغ: ${MoneyUtils.iqdWithWords((b['amount'] ?? 0) is num ? (b['amount'] as num).toDouble() : double.tryParse((b['amount'] ?? '0').toString()) ?? 0)} • العمولة: ${MoneyUtils.iqdWithWords(_commissionFromBooking(b))}',
+                    'الحالة: ${_safeString(b['status'], fallback: 'pending')} • المبلغ: ${MoneyUtils.iqdWithWords(safeAmount)} • العمولة: ${MoneyUtils.iqdWithWords(_commissionFromBooking(b))}',
                   ),
                   leading: const Icon(Icons.map_rounded),
-                  onTap: () {
-                    debugPrint('[BOOKING TAP] map bookingId=${docs[i].id} role=$role');
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => BookingMapDetailsScreen(
-                          bookingDocId: docs[i].id,
-                          role: role,
-                          currentUserId: uid,
-                        ),
-                      ),
+                  onTap: () async {
+                    await _openBookingFromMapTap(
+                      context: context,
+                      doc: docs[i],
+                      role: role,
+                      uid: uid,
                     );
                   },
                 ),
