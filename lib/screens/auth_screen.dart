@@ -301,7 +301,11 @@ class _AuthScreenState extends State<AuthScreen> {
         debugPrint('LOGIN_PREVIEW_SAFE_PATH_FAILED: ${e.code}');
         debugPrint('LOGIN_CATCH_ERROR: ${e.code}');
         debugPrint('LOGIN_FAILED_CONTROLLED');
-        _showMessage(_authService.mapFirebaseAuthError(e));
+        if (e.code == 'missing-user-doc') {
+          _showMessage('وضع المعاينة: تعذر العثور على حساب مطابق. اختر إنشاء حساب جديد للمعاينة.');
+        } else {
+          _showMessage(_authService.mapFirebaseAuthError(e));
+        }
         _showDebugErrorDialog(e.toString());
         if (e.code == 'missing-user-doc' || e.code == 'user-profile-load-failed') {
           _safeNavigate(() {

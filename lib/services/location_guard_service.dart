@@ -15,9 +15,20 @@ class LocationGuardService {
   bool _grantedInSession = false;
 
   Future<bool> ensureLocationEnabled(BuildContext context) async {
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+    LocationPermission permission;
+    try {
+      permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+    } catch (_) {
+      if (!context.mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تعذر تفعيل إذن الموقع حالياً. يمكنك المتابعة بدون الموقع التلقائي.'),
+        ),
+      );
+      return false;
     }
 
     if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
@@ -32,7 +43,10 @@ class LocationGuardService {
 
     if (_grantedInSession) return true;
 
-    var enabled = await Geolocator.isLocationServiceEnabled();
+    var enabled = false;
+    try {
+      enabled = await Geolocator.isLocationServiceEnabled();
+    } catch (_) {}
     if (!enabled) {
       try {
         await Geolocator.getCurrentPosition(timeLimit: const Duration(seconds: 4));
@@ -46,7 +60,11 @@ class LocationGuardService {
         title: 'خدمة الموقع متوقفة',
         message: 'يرجى تشغيل خدمة الموقع من إعدادات الجهاز للمتابعة.',
       );
-      enabled = await Geolocator.isLocationServiceEnabled();
+      try {
+        enabled = await Geolocator.isLocationServiceEnabled();
+      } catch (_) {
+        enabled = false;
+      }
       if (!enabled) return false;
     }
 
@@ -59,12 +77,22 @@ class LocationGuardService {
     LocationAccuracy accuracy = LocationAccuracy.bestForNavigation,
     Duration timeLimit = const Duration(seconds: 12),
   }) async {
-    final permission = await Geolocator.checkPermission();
+    LocationPermission permission;
+    try {
+      permission = await Geolocator.checkPermission();
+    } catch (_) {
+      throw LocationFetchException('تعذر الوصول إلى صلاحية الموقع على هذا الجهاز حالياً.');
+    }
     if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
       throw LocationFetchException('لا يوجد إذن موقع فعّال.');
     }
 
-    final enabled = await Geolocator.isLocationServiceEnabled();
+    bool enabled;
+    try {
+      enabled = await Geolocator.isLocationServiceEnabled();
+    } catch (_) {
+      enabled = false;
+    }
     if (!enabled) {
       throw LocationFetchException('خدمة الموقع غير مفعّلة.');
     }

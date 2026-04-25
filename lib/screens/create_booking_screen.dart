@@ -164,11 +164,6 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    final hasLocation = await LocationGuardService.instance.ensureLocationEnabled(context);
-    if (!hasLocation) {
-      if (mounted) setState(() => _saving = false);
-      return;
-    }
 
     final uid = (widget.profile['uid'] ?? '').toString();
     final role = (widget.profile['role'] ?? 'client').toString();
@@ -194,19 +189,20 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       return;
     }
 
-    Position clientPosition;
+    double? clientLat;
+    double? clientLng;
     try {
-      clientPosition = await LocationGuardService.instance.getFreshCurrentPosition();
+      final clientPosition = await LocationGuardService.instance.getFreshCurrentPosition();
+      clientLat = clientPosition.latitude;
+      clientLng = clientPosition.longitude;
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر تحديد موقعك الحالي بدقة: $e')),
+        const SnackBar(
+          content: Text('تعذر الوصول إلى الموقع حالياً. يمكنك المتابعة يدويًا بدون تحديد موقع تلقائي.'),
+        ),
       );
-      return;
     }
-
-    final clientLat = clientPosition.latitude;
-    final clientLng = clientPosition.longitude;
 
     try {
       if (role == 'client') {
@@ -251,7 +247,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       }
 
       final ref = FirebaseFirestore.instance.collection('bookings').doc();
-      await ref.set({
+      final payload = <String, dynamic>{
         'bookingId': ref.id,
         'createdById': uid,
         'clientId': uid,
@@ -263,13 +259,16 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         'price': price,
         'commissionRate': _maxCommissionRate,
         'commission': commission,
-        'clientLat': clientLat,
-        'clientLng': clientLng,
-        'clientLocation': {'lat': clientLat, 'lng': clientLng},
         'governorate': governorate,
         'requestOwnerRole': role,
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      };
+      if (clientLat != null && clientLng != null) {
+        payload['clientLat'] = clientLat;
+        payload['clientLng'] = clientLng;
+        payload['clientLocation'] = {'lat': clientLat, 'lng': clientLng};
+      }
+      await ref.set(payload);
 
       if (!mounted) return;
       Navigator.of(context).pop(true);

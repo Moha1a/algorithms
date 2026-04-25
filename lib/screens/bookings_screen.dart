@@ -709,9 +709,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
   }
 
   Future<void> _suggestPrice(String bookingDocId) async {
-    final hasLocation = await LocationGuardService.instance.ensureLocationEnabled(context);
-    if (!hasLocation) return;
-
     final ctrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
@@ -788,18 +785,19 @@ class _BookingsScreenState extends State<BookingsScreen> {
       }
     }
 
-    double outletLat;
-    double outletLng;
+    double? outletLat;
+    double? outletLng;
     try {
       final outletPosition = await LocationGuardService.instance.getFreshCurrentPosition();
       outletLat = outletPosition.latitude;
       outletLng = outletPosition.longitude;
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر تحديد موقع المنفذ الحالي بدقة: $e')),
+        const SnackBar(
+          content: Text('تعذر الوصول إلى موقع المنفذ حالياً. سيتم إرسال الاقتراح بدون الموقع.'),
+        ),
       );
-      return;
     }
 
     final ref = FirebaseFirestore.instance.collection('bookings').doc(bookingDocId);
@@ -825,9 +823,11 @@ class _BookingsScreenState extends State<BookingsScreen> {
         'outletId': uid,
         'price': price,
         'createdAtMs': DateTime.now().millisecondsSinceEpoch,
-        'outletLat': outletLat,
-        'outletLng': outletLng,
       };
+      if (outletLat != null && outletLng != null) {
+        item['outletLat'] = outletLat;
+        item['outletLng'] = outletLng;
+      }
       if (idx >= 0) {
         proposals[idx] = item;
       } else {
@@ -874,8 +874,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
   }
 
   Future<void> _acceptProposal(String bookingDocId, String outletId, String price) async {
-    final hasLocation = await LocationGuardService.instance.ensureLocationEnabled(context);
-    if (!hasLocation) return;
     debugPrint('[ProposalFlow] accepting proposal bookingId=$bookingDocId outletId=$outletId');
     final p = double.tryParse(price) ?? 0;
     final bookingRef = FirebaseFirestore.instance.collection('bookings').doc(bookingDocId);

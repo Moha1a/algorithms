@@ -156,7 +156,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         (_) => false,
       );
     } on FirebaseAuthException catch (e) {
-      _showMessage(widget.authService.mapFirebaseAuthError(e));
+      if (e.code == 'missing-user-doc') {
+        _showMessage('وضع المعاينة: تعذر العثور على بيانات الحساب للمعاينة.');
+      } else {
+        _showMessage(widget.authService.mapFirebaseAuthError(e));
+      }
     } catch (e) {
       _showMessage('حدث خطأ غير متوقع. حاول مرة أخرى.');
     } finally {

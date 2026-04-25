@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -103,23 +104,10 @@ class AuthService {
   }) async {
     final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
     await assertLoginPasswordBeforeOtp(phoneNumber: normalizedPhone, password: password, role: role);
-
-    final users = await _firestore
-        .collection('users')
-        .where('phoneNumber', isEqualTo: normalizedPhone)
-        .limit(10)
-        .get()
-        .timeout(const Duration(seconds: 8));
-    if (users.docs.isEmpty) {
-      throw FirebaseAuthException(code: 'missing-user-doc', message: 'الحساب غير موجود');
-    }
-    final selected = users.docs
-        .map((d) => d.data())
-        .firstWhere((d) => (d['role'] ?? '').toString() == role, orElse: () => users.docs.first.data());
-    if (selected.isEmpty) {
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
-    }
-    return selected;
+    return _resolveProfileForLogin(
+      role: role,
+      normalizedPhone: normalizedPhone,
+    );
   }
 
   Future<void> assertLoginPasswordBeforeOtp({
@@ -133,21 +121,9 @@ class AuthService {
       throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
     }
 
-    final snap = await _firestore
-        .collection('users')
-        .where('phoneNumber', isEqualTo: normalizedPhone)
-        .limit(5)
-        .get()
-        .timeout(const Duration(seconds: 8));
-
-    if (snap.docs.isEmpty) {
-      throw FirebaseAuthException(code: 'missing-user-doc', message: 'هذا الرقم غير مسجل بعد.');
-    }
-
-    final docs = snap.docs.map((d) => d.data()).toList(growable: false);
-    final profile = docs.firstWhere(
-      (d) => (d['role'] ?? '').toString() == role,
-      orElse: () => docs.first,
+    final profile = await _resolveProfileForLogin(
+      role: role,
+      normalizedPhone: normalizedPhone,
     );
     final existingRole = (profile['role'] ?? '').toString();
     if (existingRole.isNotEmpty && existingRole != role) {
@@ -428,6 +404,10 @@ class AuthService {
   }
 
   Future<void> _safeRegisterDevice() async {
+    if (appPreviewSafeMode) {
+      debugPrint('DEVICE_REGISTRATION_SKIPPED_IN_PREVIEW');
+      return;
+    }
     debugPrint('DEVICE_REGISTRATION_START');
     try {
       await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
@@ -774,6 +754,12 @@ class AuthService {
       profile['approvalStatus'] = 'pending';
     }
 
+    final canWriteProtectedData = _auth.currentUser != null;
+    if (!canWriteProtectedData) {
+      debugPrint('[AuthService] preview registration write skipped: unauthenticated');
+      return profile;
+    }
+
     try {
       await _firestore.collection('users').doc(generatedUid).set(profile, SetOptions(merge: true));
       final fresh = await _firestore.collection('users').doc(generatedUid).get();
@@ -783,6 +769,107 @@ class AuthService {
       debugPrint('$stackTrace');
       return profile;
     }
+  }
+
+  Future<Map<String, dynamic>> _resolveProfileForLogin({
+    required String role,
+    required String normalizedPhone,
+  }) async {
+    debugPrint('PROFILE_RESOLVE_START');
+    final currentUser = _auth.currentUser;
+    final currentUid = currentUser?.uid ?? '';
+    final currentPhone = IraqiPhoneUtils.normalize(currentUser?.phoneNumber ?? normalizedPhone);
+    debugPrint('CURRENT_USER_UID: ${currentUid.isEmpty ? 'null' : currentUid}');
+    debugPrint('CURRENT_USER_PHONE: $currentPhone');
+
+    if (currentUid.isNotEmpty) {
+      debugPrint('USER_DOC_BY_UID_START');
+      try {
+        final byUid = await _firestore.collection('users').doc(currentUid).get().timeout(const Duration(seconds: 8));
+        final data = byUid.data();
+        if (byUid.exists && data != null && data.isNotEmpty) {
+          debugPrint('USER_DOC_BY_UID_FOUND');
+          return data;
+        }
+        debugPrint('USER_DOC_BY_UID_MISSING');
+      } on TimeoutException catch (error) {
+        debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
+        throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل بيانات الحساب، حاول مرة أخرى');
+      } on FirebaseException catch (error) {
+        debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
+        throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل بيانات الحساب، حاول مرة أخرى');
+      } catch (error) {
+        debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
+      }
+    }
+
+    debugPrint('USER_DOC_BY_PHONE_QUERY_START');
+    try {
+      final byPhone = await _findProfileByPhoneCandidates(
+        normalizedPhone: normalizedPhone,
+        role: role,
+      );
+      if (byPhone != null) {
+        debugPrint('USER_DOC_BY_PHONE_QUERY_FOUND');
+        return byPhone;
+      }
+      debugPrint('USER_DOC_BY_PHONE_QUERY_MISSING');
+      throw FirebaseAuthException(code: 'missing-user-doc', message: 'هذا الرقم غير مسجل بعد.');
+    } on FirebaseAuthException {
+      rethrow;
+    } on TimeoutException catch (error) {
+      debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل بيانات الحساب، حاول مرة أخرى');
+    } on FirebaseException catch (error) {
+      debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل بيانات الحساب، حاول مرة أخرى');
+    } catch (error) {
+      debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل بيانات الحساب، حاول مرة أخرى');
+    }
+  }
+
+  Set<String> _phoneCandidates(String normalizedPhone) {
+    final normalized = IraqiPhoneUtils.normalize(normalizedPhone);
+    final digits = normalized.replaceAll(RegExp(r'\D'), '');
+    final local = IraqiPhoneUtils.localPart(normalized);
+    final withZero = local.startsWith('0') ? local : '0$local';
+    return {
+      normalized,
+      digits,
+      local,
+      withZero,
+      '+$digits',
+    }.where((e) => e.trim().isNotEmpty).toSet();
+  }
+
+  Future<Map<String, dynamic>?> _findProfileByPhoneCandidates({
+    required String normalizedPhone,
+    required String role,
+  }) async {
+    final candidates = _phoneCandidates(normalizedPhone).toList(growable: false);
+    const fields = ['phoneNumber', 'phone', 'normalizedPhone', 'mobile'];
+
+    for (final field in fields) {
+      for (final value in candidates) {
+        final snap = await _firestore
+            .collection('users')
+            .where(field, isEqualTo: value)
+            .limit(10)
+            .get()
+            .timeout(const Duration(seconds: 8));
+        if (snap.docs.isEmpty) continue;
+        final docs = snap.docs.map((d) => d.data()).toList(growable: false);
+        final selected = docs.firstWhere(
+          (d) => (d['role'] ?? '').toString() == role,
+          orElse: () => docs.first,
+        );
+        if (selected.isNotEmpty) {
+          return selected;
+        }
+      }
+    }
+    return null;
   }
 
 }
