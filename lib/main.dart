@@ -17,6 +17,7 @@ import 'theme/app_theme.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 Future<void>? _firebaseInitFuture;
+const bool appPreviewSafeMode = bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -48,6 +49,9 @@ void main() {
   };
 
   debugPrint('APP STARTED');
+  if (appPreviewSafeMode) {
+    debugPrint('APP_PREVIEW_SAFE_MODE_ENABLED');
+  }
   final firebaseInitFuture = _initializeFirebaseWithLogs();
 
   runApp(

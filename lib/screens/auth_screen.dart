@@ -25,6 +25,8 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   static const _adminPhone = '+9647733832043';
   static const _adminPassword = 'ALskQPwo0099@&';
+  static const bool appPreviewSafeMode =
+      bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
 
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
@@ -246,6 +248,53 @@ class _AuthScreenState extends State<AuthScreen> {
     }
     if (mounted) setState(() => _isLoading = true);
     var flowHandled = false;
+
+    if (appPreviewSafeMode) {
+      debugPrint('APP_PREVIEW_SAFE_MODE_ENABLED');
+      debugPrint('PHONE_AUTH_SKIPPED_IN_PREVIEW');
+      debugPrint('LOGIN_PREVIEW_SAFE_PATH_START');
+      try {
+        if (!_isLogin) {
+          throw FirebaseAuthException(
+            code: 'preview-phone-auth-disabled',
+            message: 'إنشاء حساب عبر OTP غير متاح في وضع المعاينة.',
+          );
+        }
+        final profile = await _authService.loginWithPhonePasswordPreview(
+          role: selectedRole,
+          phoneNumber: normalizedPhone,
+          password: _passwordController.text,
+        );
+        if (!mounted) return;
+        debugPrint('LOGIN_PREVIEW_SAFE_PATH_SUCCESS');
+        debugPrint('NAVIGATION_START');
+        _openPostAuthScreen(profile);
+      } on FirebaseAuthException catch (e) {
+        debugPrint('LOGIN_PREVIEW_SAFE_PATH_FAILED: ${e.code}');
+        debugPrint('LOGIN_CATCH_ERROR: ${e.code}');
+        debugPrint('LOGIN_FAILED_CONTROLLED');
+        _showMessage(_authService.mapFirebaseAuthError(e));
+        _showDebugErrorDialog(e.toString());
+        if (e.code == 'missing-user-doc' || e.code == 'user-profile-load-failed') {
+          _safeNavigate(() {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+              (_) => false,
+            );
+          });
+        }
+      } catch (e, stackTrace) {
+        debugPrint('LOGIN_PREVIEW_SAFE_PATH_FAILED: $e');
+        debugPrint('$stackTrace');
+        debugPrint('LOGIN_CATCH_ERROR: $e');
+        debugPrint('LOGIN_FAILED_CONTROLLED');
+        _showMessage('حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.');
+        _showDebugErrorDialog(e.toString());
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
+      return;
+    }
 
     try {
       if (_isLogin) {

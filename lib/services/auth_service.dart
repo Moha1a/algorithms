@@ -22,6 +22,8 @@ class AuthService {
   static const _testClientEmail = 'test.client@monfathak.local';
   static const _testOutletEmail = 'test.outlet@monfathak.local';
   static const _testPassword = 'TestAccount#2026';
+  static const bool appPreviewSafeMode =
+      bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
 
   String _hashPassword(String password) {
     return sha256.convert(utf8.encode(password.trim())).toString();
@@ -62,6 +64,8 @@ class AuthService {
         return 'التطبيق غير مصرح لهذا المشروع.';
       case 'user-profile-load-failed':
         return 'تعذر تحميل بيانات الحساب. حاول مرة أخرى.';
+      case 'preview-phone-auth-disabled':
+        return 'تسجيل OTP غير متاح في وضع المعاينة.';
       default:
         return error.message ?? 'حدث خطأ في المصادقة. حاول مرة أخرى.';
     }
@@ -75,6 +79,13 @@ class AuthService {
     required void Function(String verificationId) codeAutoRetrievalTimeout,
     int? forceResendingToken,
   }) {
+    if (appPreviewSafeMode) {
+      debugPrint('PHONE_AUTH_SKIPPED_IN_PREVIEW');
+      throw FirebaseAuthException(
+        code: 'preview-phone-auth-disabled',
+        message: 'OTP غير متاح في وضع المعاينة.',
+      );
+    }
     return _auth.verifyPhoneNumber(
       phoneNumber: phoneNumber,
       verificationCompleted: verificationCompleted,
@@ -84,6 +95,32 @@ class AuthService {
       forceResendingToken: forceResendingToken,
       timeout: const Duration(seconds: 60),
     );
+  }
+
+  Future<Map<String, dynamic>> loginWithPhonePasswordPreview({
+    required String role,
+    required String phoneNumber,
+    required String password,
+  }) async {
+    final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
+    await assertLoginPasswordBeforeOtp(phoneNumber: normalizedPhone, password: password, role: role);
+
+    final users = await _firestore
+        .collection('users')
+        .where('phoneNumber', isEqualTo: normalizedPhone)
+        .limit(10)
+        .get()
+        .timeout(const Duration(seconds: 8));
+    if (users.docs.isEmpty) {
+      throw FirebaseAuthException(code: 'missing-user-doc', message: 'الحساب غير موجود');
+    }
+    final selected = users.docs
+        .map((d) => d.data())
+        .firstWhere((d) => (d['role'] ?? '').toString() == role, orElse: () => users.docs.first.data());
+    if (selected.isEmpty) {
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+    }
+    return selected;
   }
 
   Future<void> assertLoginPasswordBeforeOtp({

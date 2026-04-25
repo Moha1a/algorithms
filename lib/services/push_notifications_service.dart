@@ -21,7 +21,7 @@ class PushNotificationsService {
   static const String _channelDescription = 'Used for order/chat/proposal updates.';
 
   static final FlutterLocalNotificationsPlugin _local = FlutterLocalNotificationsPlugin();
-  static const bool isPreviewSafeMode =
+  static const bool appPreviewSafeMode =
       bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
@@ -83,7 +83,7 @@ class PushNotificationsService {
 
     try {
       if (_shouldSkipPushForPreview()) {
-        debugPrint('[PushNotificationsService] preview safe mode: skipping push initialization');
+        debugPrint('PUSH_SKIPPED_IN_PREVIEW');
         return;
       }
       await ensureLocalNotificationsInitialized();
@@ -164,7 +164,10 @@ class PushNotificationsService {
   }
 
   Future<void> _requestPermissions() async {
-    if (_shouldSkipPushForPreview()) return;
+    if (_shouldSkipPushForPreview()) {
+      debugPrint('PUSH_SKIPPED_IN_PREVIEW');
+      return;
+    }
     try {
       final settings = await _messaging.requestPermission(
         alert: true,
@@ -201,7 +204,7 @@ class PushNotificationsService {
   }
 
   bool _shouldSkipPushForPreview() {
-    if (isPreviewSafeMode) return true;
+    if (appPreviewSafeMode) return true;
     if (kIsWeb) return false;
     return !kReleaseMode && Platform.isIOS;
   }

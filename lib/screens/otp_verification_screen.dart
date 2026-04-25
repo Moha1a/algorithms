@@ -41,6 +41,8 @@ class OtpVerificationScreen extends StatefulWidget {
 }
 
 class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
+  static const bool appPreviewSafeMode =
+      bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
@@ -95,6 +97,12 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   }
 
   Future<void> _verifyCode() async {
+    if (appPreviewSafeMode) {
+      debugPrint('APP_PREVIEW_SAFE_MODE_ENABLED');
+      debugPrint('PHONE_AUTH_SKIPPED_IN_PREVIEW');
+      _showMessage('التحقق عبر OTP غير متاح في وضع المعاينة.');
+      return;
+    }
     final code = _otpController.text.trim();
     if (code.length < 6) {
       _showMessage('أدخل رمز OTP صحيح');
@@ -160,7 +168,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   Future<void> _submitNewPassword() async {
     final verifiedUid = _verifiedUid;
-    if (_verifiedCredential == null || verifiedUid == null || verifiedUid.trim().isNotEmpty == false) return;
+    if (_verifiedCredential == null || verifiedUid == null || verifiedUid.trim().isEmpty) return;
     final verifiedAt = _verifiedAt;
     if (verifiedAt == null || DateTime.now().difference(verifiedAt) > _passwordResetWindow) {
       _showMessage('انتهت مهلة التحقق. يرجى إعادة إرسال رمز التحقق.');
@@ -319,9 +327,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               TextField(
                 controller: _confirmPasswordController,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور الجديدة'),
+                decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
                 height: 48,
@@ -333,7 +341,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('حفظ كلمة المرور'),
+                      : const Text('تحديث كلمة المرور'),
                 ),
               ),
             ],
@@ -343,8 +351,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     );
   }
 
-  void _showMessage(String text) {
+  void _showMessage(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 }
