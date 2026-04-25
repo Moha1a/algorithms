@@ -48,7 +48,7 @@ void main() {
     return true;
   };
 
-  debugPrint('APP STARTED');
+  debugPrint('[APP START] started');
   if (appPreviewSafeMode) {
     debugPrint('APP_PREVIEW_SAFE_MODE_ENABLED');
   }
@@ -85,13 +85,13 @@ void _showGlobalError(String message) {
 }
 
 Future<void> _initializeFirebaseWithLogs() async {
-  debugPrint('FIREBASE INIT START');
+  debugPrint('[FIREBASE INIT] start');
   try {
     await _ensureFirebaseInitialized();
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-    debugPrint('FIREBASE INIT SUCCESS');
+    debugPrint('[FIREBASE INIT] success');
   } catch (error, stackTrace) {
-    debugPrint('FIREBASE INIT FAILED: $error');
+    debugPrint('[FIREBASE INIT] failed: $error');
     debugPrint('$stackTrace');
     rethrow;
   }
@@ -164,10 +164,10 @@ class _FirebaseBootstrapperState extends State<_FirebaseBootstrapper> {
 
   Future<void> _initPushNonBlocking() async {
     try {
-      debugPrint('PUSH INIT START');
+      debugPrint('[PUSH INIT] start');
       await PushNotificationsService.instance.initialize(rootNavigatorKey);
     } catch (error, stackTrace) {
-      debugPrint('PUSH INIT FAILED: $error');
+      debugPrint('[PUSH INIT] failed: $error');
       debugPrint('$stackTrace');
     }
   }

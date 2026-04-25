@@ -52,7 +52,7 @@ class AuthService {
       case 'wrong-password':
         return 'كلمة المرور غير صحيحة.';
       case 'missing-user-doc':
-        return 'الحساب غير مكتمل. يرجى إنشاء حساب جديد أولًا.';
+        return 'الحساب غير موجود. يرجى إنشاء حساب جديد أولًا.';
       case 'role-mismatch':
         return 'هذا الحساب مسجل بدور مختلف.';
       case 'outlet-pending-approval':
@@ -81,20 +81,29 @@ class AuthService {
     int? forceResendingToken,
   }) {
     if (appPreviewSafeMode) {
-      debugPrint('PHONE_AUTH_SKIPPED_IN_PREVIEW');
+      debugPrint('[OTP FLOW] skipped in APP_PREVIEW_SAFE_MODE');
       codeSent('preview-bypass-verification-id', forceResendingToken);
       codeAutoRetrievalTimeout('preview-bypass-verification-id');
       return Future.value();
     }
-    return _auth.verifyPhoneNumber(
-      phoneNumber: phoneNumber,
-      verificationCompleted: verificationCompleted,
-      verificationFailed: verificationFailed,
-      codeSent: codeSent,
-      codeAutoRetrievalTimeout: codeAutoRetrievalTimeout,
-      forceResendingToken: forceResendingToken,
-      timeout: const Duration(seconds: 60),
-    );
+    try {
+      debugPrint('[OTP FLOW] verifyPhoneNumber start for=$phoneNumber');
+      return _auth.verifyPhoneNumber(
+        phoneNumber: phoneNumber,
+        verificationCompleted: verificationCompleted,
+        verificationFailed: verificationFailed,
+        codeSent: codeSent,
+        codeAutoRetrievalTimeout: codeAutoRetrievalTimeout,
+        forceResendingToken: forceResendingToken,
+        timeout: const Duration(seconds: 60),
+      );
+    } on FirebaseAuthException {
+      rethrow;
+    } catch (error, stackTrace) {
+      debugPrint('[OTP FLOW] verifyPhoneNumber failed: $error');
+      debugPrint('$stackTrace');
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر بدء التحقق بالرمز. حاول مرة أخرى.');
+    }
   }
 
   Future<Map<String, dynamic>> loginWithPhonePasswordPreview({
@@ -159,7 +168,7 @@ class AuthService {
     required String governorate,
     String? outletName,
   }) async {
-    debugPrint('AUTH_LOGIN_START');
+    debugPrint('[LOGIN FLOW] start');
     try {
       final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
       final trimmedPassword = password.trim();
@@ -168,7 +177,7 @@ class AuthService {
       }
 
       final userCredential = await _auth.signInWithCredential(credential);
-      debugPrint('AUTH_LOGIN_SUCCESS');
+      debugPrint('[LOGIN FLOW] credential sign-in success');
       final uid = userCredential.user?.uid;
       if (uid == null) {
         throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر تسجيل الدخول');
@@ -186,7 +195,7 @@ class AuthService {
       }
 
       final userDocRef = _firestore.collection('users').doc(uid);
-      debugPrint('PROFILE_LOAD_START');
+      debugPrint('[PROFILE LOAD] start');
       DocumentSnapshot<Map<String, dynamic>> snap;
       try {
         snap = await userDocRef.get().timeout(const Duration(seconds: 8));
@@ -242,7 +251,7 @@ class AuthService {
           debugPrint('PROFILE_LOAD_FAILED: null profile after login');
           throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
         }
-        debugPrint('PROFILE_LOAD_SUCCESS');
+        debugPrint('[PROFILE LOAD] success');
         return freshData;
       }
 
@@ -293,7 +302,7 @@ class AuthService {
         debugPrint('PROFILE_LOAD_FAILED: null profile after registration');
         throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
       }
-      debugPrint('PROFILE_LOAD_SUCCESS');
+      debugPrint('[PROFILE LOAD] success');
       return freshData;
     } on FirebaseAuthException {
       rethrow;
@@ -775,7 +784,7 @@ class AuthService {
     required String role,
     required String normalizedPhone,
   }) async {
-    debugPrint('PROFILE_RESOLVE_START');
+    debugPrint('[PROFILE LOAD] resolve start');
     final currentUser = _auth.currentUser;
     final currentUid = currentUser?.uid ?? '';
     final currentPhone = IraqiPhoneUtils.normalize(currentUser?.phoneNumber ?? normalizedPhone);

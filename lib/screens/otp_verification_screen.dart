@@ -97,18 +97,21 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   }
 
   Future<void> _verifyCode() async {
+    debugPrint('[OTP FLOW] verify submit');
     if (appPreviewSafeMode) {
       await _continuePreviewBypass();
       return;
     }
     final code = _otpController.text.trim();
     if (code.length < 6) {
+      debugPrint('[OTP FLOW] invalid OTP length');
       _showMessage('أدخل رمز OTP صحيح');
       return;
     }
 
     setState(() => _isLoading = true);
     try {
+      debugPrint('[OTP FLOW] create credential');
       final credential = PhoneAuthProvider.credential(
         verificationId: _verificationId,
         smsCode: code,
@@ -156,18 +159,19 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         (_) => false,
       );
     } on FirebaseAuthException catch (e) {
+      debugPrint('[OTP FLOW] firebase exception: ${e.code}');
       if (e.code == 'missing-user-doc') {
         _showMessage('وضع المعاينة: تعذر العثور على بيانات الحساب للمعاينة.');
       } else {
         _showMessage(widget.authService.mapFirebaseAuthError(e));
       }
     } catch (e) {
+      debugPrint('[OTP FLOW] unexpected error: $e');
       _showMessage('حدث خطأ غير متوقع. حاول مرة أخرى.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
 
   Future<void> _continuePreviewBypass() async {
     if (widget.isPasswordResetFlow) {
@@ -211,7 +215,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
 
   Future<void> _submitNewPassword() async {
     final verifiedUid = _verifiedUid;
@@ -358,40 +361,33 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 _canResend
                     ? 'يمكنك الآن إعادة إرسال الرمز.'
                     : 'إعادة الإرسال خلال $_secondsLeft ثانية',
-                textAlign: TextAlign.center,
                 style: const TextStyle(color: AppColors.textMuted),
               ),
-              const SizedBox(height: 10),
-              OutlinedButton(
+              const SizedBox(height: 6),
+              TextButton(
                 onPressed: (_canResend && !_isLoading) ? _resendCode : null,
                 child: const Text('إعادة إرسال الرمز'),
               ),
             ] else ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.primarySoft,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: const Text(
-                  'الرجاء إدخال كلمة مرور جديدة قوية ثم تأكيدها.',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
+              const Text(
+                'أدخل كلمة المرور الجديدة لحسابك.',
+                style: TextStyle(color: AppColors.textMuted),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _newPasswordController,
                 obscureText: true,
+                textDirection: TextDirection.ltr,
                 decoration: const InputDecoration(labelText: 'كلمة المرور الجديدة'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               TextField(
                 controller: _confirmPasswordController,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور الجديدة'),
+                textDirection: TextDirection.ltr,
+                decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
                 height: 48,
@@ -403,7 +399,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('حفظ كلمة المرور'),
+                      : const Text('تحديث كلمة المرور'),
                 ),
               ),
             ],
@@ -413,8 +409,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     );
   }
 
-  void _showMessage(String text) {
+  void _showMessage(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 }

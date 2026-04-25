@@ -83,7 +83,7 @@ class PushNotificationsService {
 
     try {
       if (_shouldSkipPushForPreview()) {
-        debugPrint('PUSH_SKIPPED_IN_PREVIEW');
+        debugPrint('[PUSH INIT] skipped in APP_PREVIEW_SAFE_MODE');
         return;
       }
       await ensureLocalNotificationsInitialized();
@@ -157,7 +157,7 @@ class PushNotificationsService {
       }
     } catch (error, stackTrace) {
       _initialized = false;
-      debugPrint('[PushNotificationsService] initialize failed: $error');
+      debugPrint('[PUSH INIT] initialize failed: $error');
       debugPrint('$stackTrace');
       rethrow;
     }
@@ -165,7 +165,7 @@ class PushNotificationsService {
 
   Future<void> _requestPermissions() async {
     if (_shouldSkipPushForPreview()) {
-      debugPrint('PUSH_SKIPPED_IN_PREVIEW');
+      debugPrint('[PUSH INIT] skipped in APP_PREVIEW_SAFE_MODE');
       return;
     }
     try {
@@ -175,7 +175,7 @@ class PushNotificationsService {
         sound: true,
         provisional: false,
       );
-      debugPrint('[PushNotificationsService] Firebase permission: ${settings.authorizationStatus}');
+      debugPrint('[PUSH INIT] Firebase permission: ${settings.authorizationStatus}');
     } catch (error, stackTrace) {
       if (_isExpectedSimulatorPushError(error)) {
         debugPrint('[PushNotificationsService] simulator push permission issue ignored: $error');
@@ -194,7 +194,7 @@ class PushNotificationsService {
   }
 
   bool _isExpectedSimulatorPushError(Object error) {
-    if (!Platform.isIOS) return false;
+    if (kIsWeb || !Platform.isIOS) return false;
     final msg = error.toString().toLowerCase();
     return msg.contains('apns') ||
         msg.contains('token') ||
@@ -204,9 +204,7 @@ class PushNotificationsService {
   }
 
   bool _shouldSkipPushForPreview() {
-    if (appPreviewSafeMode) return true;
-    if (kIsWeb) return false;
-    return !kReleaseMode && Platform.isIOS;
+    return appPreviewSafeMode;
   }
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {
@@ -233,8 +231,8 @@ class PushNotificationsService {
     if (nav == null) return;
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || uid.trim().isEmpty) return;
-    final userSnap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-    final profile = userSnap.data();
+    final userSnap = FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final profile = (await userSnap).data();
     if (profile == null) return;
     final role = (profile['role'] ?? '').toString();
     final mapIndex = role == 'outlet' ? 3 : 1;

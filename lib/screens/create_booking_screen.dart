@@ -150,7 +150,6 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     );
   }
 
-
   double? _parseMoney(String input) {
     var value = input.trim();
     if (value.isEmpty) return null;
@@ -162,7 +161,9 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
 
   Future<void> _createBooking() async {
     if (_saving) return;
-    if (!_formKey.currentState!.validate()) return;
+    final formState = _formKey.currentState;
+    if (formState == null || !formState.validate()) return;
+    debugPrint('[REQUEST CREATE] start');
     setState(() => _saving = true);
 
     final uid = (widget.profile['uid'] ?? '').toString();
@@ -180,12 +181,14 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تم رفض الطلب: الحد الأدنى للعمولة هو ${MoneyUtils.iqdWithWords(minAllowed)}.')),
       );
+      if (mounted) setState(() => _saving = false);
       return;
     }
     if (commission > maxAllowed + 0.0001) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تم رفض الطلب: الحد الأعلى للعمولة هو ${MoneyUtils.iqdWithWords(maxAllowed)}.')),
       );
+      if (mounted) setState(() => _saving = false);
       return;
     }
 
@@ -196,6 +199,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       clientLat = clientPosition.latitude;
       clientLng = clientPosition.longitude;
     } catch (e) {
+      debugPrint('[REQUEST CREATE] failed: $e');
+      debugPrint('[LOCATION PERMISSION] request create location unavailable: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -269,10 +274,12 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         payload['clientLocation'] = {'lat': clientLat, 'lng': clientLng};
       }
       await ref.set(payload);
+      debugPrint('[REQUEST CREATE] success bookingId=${ref.id}');
 
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (e) {
+      debugPrint('[REQUEST CREATE] failed: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تعذر إنشاء الطلب: $e')),

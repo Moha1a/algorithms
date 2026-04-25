@@ -17,9 +17,7 @@ class DeviceRegistrationService {
   String _resolveDeviceId(String token) => token.hashCode.abs().toString();
 
   bool get _shouldSkipIosSimulatorRegistration {
-    if (appPreviewSafeMode) return true;
-    if (kIsWeb) return false;
-    return !kReleaseMode && Platform.isIOS;
+    return appPreviewSafeMode;
   }
 
   Future<void> _detachTokenFromOtherAccounts({
@@ -72,7 +70,7 @@ class DeviceRegistrationService {
     if (uid.trim().isEmpty) return;
 
     if (_shouldSkipIosSimulatorRegistration) {
-      debugPrint('DEVICE_REGISTRATION_SKIPPED_IOS_PREVIEW');
+      debugPrint('[DEVICE REGISTRATION] skipped in APP_PREVIEW_SAFE_MODE');
       return;
     }
 
@@ -80,13 +78,13 @@ class DeviceRegistrationService {
     try {
       token = await FirebaseMessaging.instance.getToken();
     } catch (error, stackTrace) {
-      debugPrint('DEVICE_REGISTRATION_FAILED_IGNORED: $error');
+      debugPrint('[DEVICE REGISTRATION] failed (ignored): $error');
       debugPrint('$stackTrace');
       return;
     }
 
     if (token == null || token.trim().isEmpty) {
-      debugPrint('[DeviceRegistrationService] no token for uid=$uid');
+      debugPrint('[DEVICE REGISTRATION] no token for uid=$uid');
       return;
     }
 
@@ -130,7 +128,7 @@ class DeviceRegistrationService {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (error, stackTrace) {
-      debugPrint('DEVICE_REGISTRATION_FAILED_IGNORED: $error');
+      debugPrint('[DEVICE REGISTRATION] failed (ignored): $error');
       debugPrint('$stackTrace');
     }
   }
@@ -156,7 +154,7 @@ class DeviceRegistrationService {
 
       await db.collection('users').doc(uid).collection('fcmTokens').doc(token).delete();
     } catch (error, stackTrace) {
-      debugPrint('[DeviceRegistrationService] unregister ignored: $error');
+      debugPrint('[DEVICE REGISTRATION] unregister ignored: $error');
       debugPrint('$stackTrace');
     }
   }
@@ -209,7 +207,7 @@ class DeviceRegistrationService {
         packageName: packageName,
       );
     } catch (error, stackTrace) {
-      debugPrint('DEVICE_REGISTRATION_FAILED_IGNORED: $error');
+      debugPrint('[DEVICE REGISTRATION] failed (ignored): $error');
       debugPrint('$stackTrace');
     }
   }

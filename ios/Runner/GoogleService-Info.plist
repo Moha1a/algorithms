@@ -2,35 +2,31 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CLIENT_ID</key>
-	<string>1025525101614-fko0al4vba9iumthi76rotmqvfmtnq0e.apps.googleusercontent.com</string>
-	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.1025525101614-fko0al4vba9iumthi76rotmqvfmtnq0e</string>
-	<key>ANDROID_CLIENT_ID</key>
-	<string>1025525101614-0iq1m9suihp57p5aj73kfpsfvaq2at3e.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
-	<string>AIzaSyAt8R2iub5RaBG2vYnCT56zZGfcslEQ7U4</string>
+	<string>REPLACE_WITH_FIREBASE_IOS_API_KEY</string>
 	<key>GCM_SENDER_ID</key>
 	<string>1025525101614</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.company.manfathak</string>
+	<string>com.example.algorithms</string>
 	<key>PROJECT_ID</key>
 	<string>qiqa-c17c2</string>
 	<key>STORAGE_BUCKET</key>
-	<string>qiqa-c17c2.firebasestorage.app</string>
+	<string>qiqa-c17c2.appspot.com</string>
 	<key>IS_ADS_ENABLED</key>
-	<false></false>
+	<false/>
 	<key>IS_ANALYTICS_ENABLED</key>
-	<false></false>
+	<false/>
 	<key>IS_APPINVITE_ENABLED</key>
-	<true></true>
+	<true/>
 	<key>IS_GCM_ENABLED</key>
-	<true></true>
+	<true/>
 	<key>IS_SIGNIN_ENABLED</key>
-	<true></true>
+	<true/>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:1025525101614:ios:cd97beff914ba68dcfdbbf</string>
+	<string>1:1025525101614:ios:08c4c874f05d1713cfdbbf</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.REPLACE_WITH_REVERSED_CLIENT_ID</string>
 </dict>
 </plist>

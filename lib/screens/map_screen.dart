@@ -63,6 +63,7 @@ class MapScreen extends StatelessWidget {
                   ),
                   leading: const Icon(Icons.map_rounded),
                   onTap: () {
+                    debugPrint('[BOOKING TAP] map bookingId=${docs[i].id} role=$role');
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => BookingMapDetailsScreen(
@@ -828,6 +829,7 @@ class _LiveTripMapState extends State<_LiveTripMap> {
               markers: markers,
               polylines: polylines,
               onMapCreated: (c) {
+                debugPrint('[MAP INIT] map created');
                 _controller = c;
                 _fitBounds();
               },
@@ -874,7 +876,8 @@ class _LiveTripMapState extends State<_LiveTripMap> {
 
     try {
       await _controller?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 72));
-    } catch (_) {
+    } catch (error) {
+      debugPrint('[MAP INIT] fit bounds failed: $error');
       await _controller?.animateCamera(CameraUpdate.newLatLngZoom(client, 16));
     }
   }
