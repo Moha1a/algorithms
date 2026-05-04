@@ -23,8 +23,6 @@ class AuthService {
   static const _testClientEmail = 'test.client@monfathak.local';
   static const _testOutletEmail = 'test.outlet@monfathak.local';
   static const _testPassword = 'TestAccount#2026';
-  static const bool appPreviewSafeMode =
-      bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
 
   String _hashPassword(String password) {
     return sha256.convert(utf8.encode(password.trim())).toString();
@@ -64,7 +62,7 @@ class AuthService {
       case 'app-not-authorized':
         return 'التطبيق غير مصرح لهذا المشروع.';
       case 'user-profile-load-failed':
-        return 'تعذر تحميل بيانات الحساب. حاول مرة أخرى.';
+        return 'تعذر التحقق من الحساب، حاول مرة أخرى';
       case 'preview-phone-auth-disabled':
         return 'تسجيل OTP غير متاح في وضع المعاينة.';
       default:
@@ -80,21 +78,43 @@ class AuthService {
     required void Function(String verificationId) codeAutoRetrievalTimeout,
     int? forceResendingToken,
   }) {
-    if (appPreviewSafeMode) {
-      debugPrint('PHONE_AUTH_SKIPPED_PREVIEW_ONLY');
-      codeSent('preview-bypass-verification-id', forceResendingToken);
-      codeAutoRetrievalTimeout('preview-bypass-verification-id');
-      return Future.value();
-    }
     try {
       debugPrint('PHONE_AUTH_START');
       debugPrint('PHONE_AUTH_VERIFY_START');
       return _auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
-        verificationCompleted: verificationCompleted,
-        verificationFailed: verificationFailed,
-        codeSent: codeSent,
-        codeAutoRetrievalTimeout: codeAutoRetrievalTimeout,
+        verificationCompleted: (credential) {
+          try {
+            verificationCompleted(credential);
+          } catch (error, stackTrace) {
+            debugPrint('[OTP FLOW] verificationCompleted callback failed: $error');
+            debugPrint('$stackTrace');
+          }
+        },
+        verificationFailed: (exception) {
+          try {
+            verificationFailed(exception);
+          } catch (error, stackTrace) {
+            debugPrint('[OTP FLOW] verificationFailed callback failed: $error');
+            debugPrint('$stackTrace');
+          }
+        },
+        codeSent: (verificationId, resendToken) {
+          try {
+            codeSent(verificationId, resendToken);
+          } catch (error, stackTrace) {
+            debugPrint('[OTP FLOW] codeSent callback failed: $error');
+            debugPrint('$stackTrace');
+          }
+        },
+        codeAutoRetrievalTimeout: (verificationId) {
+          try {
+            codeAutoRetrievalTimeout(verificationId);
+          } catch (error, stackTrace) {
+            debugPrint('[OTP FLOW] codeAutoRetrievalTimeout callback failed: $error');
+            debugPrint('$stackTrace');
+          }
+        },
         forceResendingToken: forceResendingToken,
         timeout: const Duration(seconds: 60),
       );
@@ -104,7 +124,7 @@ class AuthService {
       debugPrint('[OTP FLOW] verifyPhoneNumber failed: $error');
       debugPrint('$stackTrace');
       debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر بدء التحقق بالرمز. حاول مرة أخرى.');
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
     }
   }
 
@@ -415,10 +435,6 @@ class AuthService {
   }
 
   Future<void> _safeRegisterDevice() async {
-    if (appPreviewSafeMode) {
-      debugPrint('DEVICE_REGISTRATION_SKIPPED_IN_PREVIEW');
-      return;
-    }
     debugPrint('DEVICE_REGISTRATION_START');
     try {
       await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
@@ -805,10 +821,10 @@ class AuthService {
         debugPrint('USER_DOC_BY_UID_MISSING');
       } on TimeoutException catch (error) {
         debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
-        throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل بيانات الحساب، حاول مرة أخرى');
+        throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
       } on FirebaseException catch (error) {
         debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
-        throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل بيانات الحساب، حاول مرة أخرى');
+        throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
       } catch (error) {
         debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
       }
@@ -830,13 +846,13 @@ class AuthService {
       rethrow;
     } on TimeoutException catch (error) {
       debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل بيانات الحساب، حاول مرة أخرى');
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
     } on FirebaseException catch (error) {
       debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل بيانات الحساب، حاول مرة أخرى');
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
     } catch (error) {
       debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل بيانات الحساب، حاول مرة أخرى');
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
     }
   }
 

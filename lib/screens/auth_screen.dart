@@ -23,8 +23,6 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  static const bool appPreviewSafeMode =
-      bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
   static const _adminPhone = '+9647733832043';
   static const _adminPassword = 'ALskQPwo0099@&';
 
@@ -88,21 +86,6 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                if (appPreviewSafeMode) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppColors.info.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.info.withOpacity(0.35)),
-                    ),
-                    child: const Text(
-                      'وضع المعاينة: تم تجاوز التحقق بالرمز لأغراض الاختبار فقط',
-                      style: TextStyle(color: AppColors.info, fontSize: 12, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                ],
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -264,71 +247,6 @@ class _AuthScreenState extends State<AuthScreen> {
     if (mounted) setState(() => _isLoading = true);
     var flowHandled = false;
 
-    if (appPreviewSafeMode) {
-      debugPrint('APP_PREVIEW_SAFE_MODE_ENABLED');
-      debugPrint('PHONE_AUTH_SKIPPED_PREVIEW_ONLY');
-      debugPrint('[LOGIN FLOW] preview-safe path start');
-      _showMessage('وضع المعاينة: تم تجاوز التحقق بالرمز لأغراض الاختبار فقط');
-      try {
-        final profile = await _authService.previewBypassOtpForLoginOrRegistration(
-          role: selectedRole,
-          phoneNumber: normalizedPhone,
-          password: _passwordController.text,
-          isRegistration: !_isLogin,
-          fullName: _fullNameController.text,
-          governorate: _selectedGovernorate,
-          outletName: _outletNameController.text,
-        );
-        if (!mounted) return;
-        debugPrint('[LOGIN FLOW] preview-safe path success');
-        debugPrint('[LOGIN FLOW] navigation start');
-        final isOutletRegistrationPending = !_isLogin &&
-            selectedRole == 'outlet' &&
-            (profile['approvalStatus'] ?? '').toString() == 'pending';
-        if (isOutletRegistrationPending) {
-          _safeNavigate(() {
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(
-                builder: (_) => OutletApprovalPendingScreen(phoneNumber: normalizedPhone),
-              ),
-              (_) => false,
-            );
-          });
-        } else {
-          _openPostAuthScreen(profile);
-        }
-      } on FirebaseAuthException catch (e) {
-      debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
-        debugPrint('LOGIN_PREVIEW_SAFE_PATH_FAILED: ${e.code}');
-        debugPrint('[LOGIN FLOW] error code: ${e.code}');
-        debugPrint('[LOGIN FLOW] controlled failure');
-        if (e.code == 'missing-user-doc') {
-          _showMessage('وضع المعاينة: تعذر العثور على حساب مطابق. اختر إنشاء حساب جديد للمعاينة.');
-        } else {
-          _showMessage(_authService.mapFirebaseAuthError(e));
-        }
-        _showDebugErrorDialog(e.toString());
-        if (e.code == 'missing-user-doc' || e.code == 'user-profile-load-failed') {
-          _safeNavigate(() {
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
-              (_) => false,
-            );
-          });
-        }
-      } catch (e, stackTrace) {
-        debugPrint('LOGIN_PREVIEW_SAFE_PATH_FAILED: $e');
-        debugPrint('$stackTrace');
-        debugPrint('LOGIN_CATCH_ERROR: $e');
-        debugPrint('[LOGIN FLOW] controlled failure');
-        _showMessage('حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.');
-        _showDebugErrorDialog(e.toString());
-      } finally {
-        if (mounted) setState(() => _isLoading = false);
-      }
-      return;
-    }
-
     try {
       if (_isLogin) {
         await _authService.assertLoginPasswordBeforeOtp(
@@ -372,7 +290,7 @@ class _AuthScreenState extends State<AuthScreen> {
             debugPrint('[LOGIN FLOW] navigation start');
             _openPostAuthScreen(profile);
           } on FirebaseAuthException catch (e) {
-      debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
+            debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
             flowHandled = false;
             debugPrint('[LOGIN FLOW] error code: ${e.code}');
             debugPrint('[LOGIN FLOW] controlled failure');

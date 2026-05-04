@@ -41,8 +41,6 @@ class OtpVerificationScreen extends StatefulWidget {
 }
 
 class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
-  static const bool appPreviewSafeMode =
-      bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
@@ -98,10 +96,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   Future<void> _verifyCode() async {
     debugPrint('[OTP FLOW] verify submit');
-    if (appPreviewSafeMode) {
-      await _continuePreviewBypass();
-      return;
-    }
     final code = _otpController.text.trim();
     if (code.length < 6) {
       debugPrint('[OTP FLOW] invalid OTP length');
@@ -161,55 +155,12 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     } on FirebaseAuthException catch (e) {
       debugPrint('[OTP FLOW] firebase exception: ${e.code}');
       if (e.code == 'missing-user-doc') {
-        _showMessage('وضع المعاينة: تعذر العثور على بيانات الحساب للمعاينة.');
+        _showMessage('هذا الحساب غير موجود');
       } else {
         _showMessage(widget.authService.mapFirebaseAuthError(e));
       }
     } catch (e) {
       debugPrint('[OTP FLOW] unexpected error: $e');
-      _showMessage('حدث خطأ غير متوقع. حاول مرة أخرى.');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _continuePreviewBypass() async {
-    if (widget.isPasswordResetFlow) {
-      _showMessage('استعادة كلمة المرور بالرمز غير متاحة في وضع المعاينة.');
-      return;
-    }
-    setState(() => _isLoading = true);
-    try {
-      final profile = await widget.authService.previewBypassOtpForLoginOrRegistration(
-        role: widget.role,
-        phoneNumber: widget.phoneNumber,
-        password: widget.password,
-        isRegistration: widget.isRegistration,
-        fullName: widget.fullName,
-        governorate: widget.governorate,
-        outletName: widget.outletName,
-      );
-      if (!mounted) return;
-      _showMessage('وضع المعاينة: تم تجاوز التحقق بالرمز لأغراض الاختبار فقط');
-      final isOutletRegistrationPending = widget.isRegistration &&
-          widget.role == 'outlet' &&
-          (profile['approvalStatus'] ?? '').toString() == 'pending';
-      if (isOutletRegistrationPending) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) => OutletApprovalPendingScreen(phoneNumber: widget.phoneNumber),
-          ),
-          (_) => false,
-        );
-        return;
-      }
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => HomeShellScreen(profile: profile)),
-        (_) => false,
-      );
-    } on FirebaseAuthException catch (e) {
-      _showMessage(widget.authService.mapFirebaseAuthError(e));
-    } catch (_) {
       _showMessage('حدث خطأ غير متوقع. حاول مرة أخرى.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -314,21 +265,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 'أدخل رمز التحقق المرسل إلى هاتفك للمتابعة.',
                 style: TextStyle(color: AppColors.textMuted),
               ),
-              if (appPreviewSafeMode) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.info.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.info.withOpacity(0.35)),
-                  ),
-                  child: const Text(
-                    'وضع المعاينة: تم تجاوز التحقق بالرمز لأغراض الاختبار فقط',
-                    style: TextStyle(color: AppColors.info, fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ],
               const SizedBox(height: 16),
               TextField(
                 controller: _otpController,
