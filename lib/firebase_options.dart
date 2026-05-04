@@ -43,7 +43,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1025525101614',
     projectId: 'qiqa-c17c2',
     storageBucket: 'qiqa-c17c2.appspot.com',
-    iosBundleId: 'com.example.algorithms',
+    iosBundleId: 'com.company.manfathak',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -52,7 +52,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1025525101614',
     projectId: 'qiqa-c17c2',
     storageBucket: 'qiqa-c17c2.appspot.com',
-    iosBundleId: 'com.example.algorithms',
+    iosBundleId: 'com.company.manfathak',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
