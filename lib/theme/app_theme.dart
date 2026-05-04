@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
 
@@ -31,21 +30,17 @@ class AppTheme {
       labelSmall: TextStyle(fontWeight: FontWeight.w600),
     );
 
-    final textTheme = GoogleFonts.tajawalTextTheme(baseTextTheme);
-
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: AppColors.background,
-      fontFamily: GoogleFonts.tajawal().fontFamily,
-      textTheme: textTheme,
+      textTheme: baseTextTheme,
       appBarTheme: AppBarTheme(
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
         foregroundColor: AppColors.textPrimary,
         titleTextStyle: TextStyle(
-          fontFamily: GoogleFonts.tajawal().fontFamily,
           fontWeight: FontWeight.w800,
           fontSize: 20,
           color: AppColors.textPrimary,
