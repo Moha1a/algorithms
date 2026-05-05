@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -33,17 +34,29 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  runZonedGuarded(() async {
+    await _bootstrapMain();
+  }, (error, stack) async {
+    debugPrint('UNCAUGHT ZONE ERROR: $error');
+    debugPrint('$stack');
+    await FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+  });
+}
 
-  FlutterError.onError = (FlutterErrorDetails details) {
+Future<void> _bootstrapMain() async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  FlutterError.onError = (FlutterErrorDetails details) async {
     FlutterError.presentError(details);
     debugPrint('FLUTTER ERROR: ${details.exception}');
     debugPrint('${details.stack}');
+    await FirebaseCrashlytics.instance.recordFlutterFatalError(details);
     _showGlobalError(details.exceptionAsString());
   };
 
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('UNHANDLED PLATFORM ERROR: $error');
     debugPrint('$stack');
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
     _showGlobalError(error.toString());
     return true;
   };
@@ -52,6 +65,7 @@ void main() {
   if (appPreviewSafeMode) {
     debugPrint('APP_PREVIEW_SAFE_MODE_ENABLED');
   }
+  FirebaseCrashlytics.instance.log('app_start');
   final firebaseInitFuture = _initializeFirebaseWithLogs();
 
   runApp(

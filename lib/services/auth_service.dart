@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -87,6 +88,7 @@ class AuthService {
       debugPrint('[PHONE AUTH PREFLIGHT] platform=$defaultTargetPlatform');
       debugPrint('[PHONE AUTH PREFLIGHT] appName=${firebaseApp.name} projectId=${firebaseApp.options.projectId} appId=${firebaseApp.options.appId}');
       debugPrint('[PHONE AUTH PREFLIGHT] phone=$phoneNumber hasPlus=$hasPlus plusDigitsOnly=$plusDigitsOnly isLikelyE164=$isLikelyE164');
+      FirebaseCrashlytics.instance.log('[PHONE AUTH PREFLIGHT] phone=$phoneNumber role=unknown');
       if (!isLikelyE164) {
         throw FirebaseAuthException(
           code: 'invalid-phone-number',
@@ -137,6 +139,7 @@ class AuthService {
     } catch (error, stackTrace) {
       debugPrint('[OTP FLOW] verifyPhoneNumber failed: $error');
       debugPrint('$stackTrace');
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
       debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
       throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
     }
