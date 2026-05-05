@@ -2,20 +2,21 @@ class IraqiPhoneUtils {
   static const String countryCode = '+964';
 
   static String normalize(String rawInput) {
-    final digits = rawInput.replaceAll(RegExp(r'\D'), '');
-    if (digits.startsWith('964') && digits.length == 12) {
-      return '+$digits';
+    final raw = rawInput.trim();
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    String local = digits;
+
+    if (raw.startsWith('+964')) {
+      local = raw.substring(4).replaceAll(RegExp(r'\D'), '');
+    } else if (digits.startsWith('964')) {
+      local = digits.substring(3);
     }
 
-    if (digits.startsWith('0') && digits.length == 11) {
-      return '$countryCode${digits.substring(1)}';
+    if (local.startsWith('0')) {
+      local = local.substring(1);
     }
 
-    if (digits.startsWith('7') && digits.length == 10) {
-      return '$countryCode$digits';
-    }
-
-    return '$countryCode$digits';
+    return '$countryCode$local';
   }
 
   static String? validate(String rawInput) {

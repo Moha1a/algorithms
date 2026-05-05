@@ -232,6 +232,7 @@ class _AuthScreenState extends State<AuthScreen> {
     }
 
     final normalizedPhone = IraqiPhoneUtils.normalize(_phoneController.text);
+    debugPrint('[LOGIN INPUT] rawPhone=${_phoneController.text} countryCode=+964 normalizedPhone=$normalizedPhone role=$selectedRole');
     final isAdminOutletLogin = _isLogin &&
         selectedRole == 'outlet' &&
         normalizedPhone == _adminPhone &&

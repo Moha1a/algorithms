@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 
 import 'device_registration_service.dart';
 import 'iraqi_phone_utils.dart';
@@ -79,6 +80,19 @@ class AuthService {
     int? forceResendingToken,
   }) {
     try {
+      final firebaseApp = _auth.app;
+      final isLikelyE164 = RegExp(r'^\+[1-9]\d{7,14}$').hasMatch(phoneNumber);
+      final hasPlus = phoneNumber.startsWith('+');
+      final plusDigitsOnly = RegExp(r'^\+\d+$').hasMatch(phoneNumber);
+      debugPrint('[PHONE AUTH PREFLIGHT] platform=$defaultTargetPlatform');
+      debugPrint('[PHONE AUTH PREFLIGHT] appName=${firebaseApp.name} projectId=${firebaseApp.options.projectId} appId=${firebaseApp.options.appId}');
+      debugPrint('[PHONE AUTH PREFLIGHT] phone=$phoneNumber hasPlus=$hasPlus plusDigitsOnly=$plusDigitsOnly isLikelyE164=$isLikelyE164');
+      if (!isLikelyE164) {
+        throw FirebaseAuthException(
+          code: 'invalid-phone-number',
+          message: 'رقم الهاتف غير صالح. يجب أن يكون بصيغة +9647XXXXXXXXX',
+        );
+      }
       debugPrint('PHONE_AUTH_START');
       debugPrint('PHONE_AUTH_VERIFY_START');
       return _auth.verifyPhoneNumber(
