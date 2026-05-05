@@ -21,7 +21,7 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDTzOzJCTsGZBEriGQEOtU9218lenRT02I',
+    apiKey: 'AIzaSyAt8R2iub5RaBG2vYnCT56zZGfcslEQ7U4',
     appId: '1:1025525101614:web:08c4c874f05d1713cfdbbf',
     messagingSenderId: '1025525101614',
     projectId: 'qiqa-c17c2',
@@ -30,7 +30,7 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDTzOzJCTsGZBEriGQEOtU9218lenRT02I',
+    apiKey: 'AIzaSyALEGcShx9HYqSJ6wE1KoUKk5JIEOwWyKw',
     appId: '1:1025525101614:android:08c4c874f05d1713cfdbbf',
     messagingSenderId: '1025525101614',
     projectId: 'qiqa-c17c2',
@@ -38,25 +38,27 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDTzOzJCTsGZBEriGQEOtU9218lenRT02I',
-    appId: '1:1025525101614:ios:08c4c874f05d1713cfdbbf',
+    apiKey: 'AIzaSyAt8R2iub5RaBG2vYnCT56zZGfcslEQ7U4',
+    appId: '1:1025525101614:ios:cd97beff914ba68dcfdbbf',
     messagingSenderId: '1025525101614',
     projectId: 'qiqa-c17c2',
     storageBucket: 'qiqa-c17c2.appspot.com',
     iosBundleId: 'com.company.manfathak',
+    iosClientId: '1025525101614-fko0al4vba9iumthi76rotmqvfmtnq0e.apps.googleusercontent.com',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyDTzOzJCTsGZBEriGQEOtU9218lenRT02I',
-    appId: '1:1025525101614:ios:08c4c874f05d1713cfdbbf',
+    apiKey: 'AIzaSyAt8R2iub5RaBG2vYnCT56zZGfcslEQ7U4',
+    appId: '1:1025525101614:ios:cd97beff914ba68dcfdbbf',
     messagingSenderId: '1025525101614',
     projectId: 'qiqa-c17c2',
     storageBucket: 'qiqa-c17c2.appspot.com',
     iosBundleId: 'com.company.manfathak',
+    iosClientId: '1025525101614-fko0al4vba9iumthi76rotmqvfmtnq0e.apps.googleusercontent.com',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDTzOzJCTsGZBEriGQEOtU9218lenRT02I',
+    apiKey: 'AIzaSyAt8R2iub5RaBG2vYnCT56zZGfcslEQ7U4',
     appId: '1:1025525101614:web:08c4c874f05d1713cfdbbf',
     messagingSenderId: '1025525101614',
     projectId: 'qiqa-c17c2',
@@ -65,7 +67,7 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions linux = FirebaseOptions(
-    apiKey: 'AIzaSyDTzOzJCTsGZBEriGQEOtU9218lenRT02I',
+    apiKey: 'AIzaSyAt8R2iub5RaBG2vYnCT56zZGfcslEQ7U4',
     appId: '1:1025525101614:web:08c4c874f05d1713cfdbbf',
     messagingSenderId: '1025525101614',
     projectId: 'qiqa-c17c2',
