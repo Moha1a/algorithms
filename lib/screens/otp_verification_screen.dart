@@ -96,6 +96,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   Future<void> _verifyCode() async {
     debugPrint('[OTP FLOW] verify submit');
+    debugPrint('[OTP FLOW] verificationId=$_verificationId phone=${widget.phoneNumber} role=${widget.role} isRegistration=${widget.isRegistration}');
+    if (_verificationId.trim().isEmpty) {
+      _showMessage('تعذر بدء التحقق. أعد إرسال الرمز ثم حاول مرة أخرى.');
+      return;
+    }
     final code = _otpController.text.trim();
     if (code.length < 6) {
       debugPrint('[OTP FLOW] invalid OTP length');
@@ -148,10 +153,17 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         );
         return;
       }
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => HomeShellScreen(profile: profile)),
-        (_) => false,
-      );
+      if (!mounted) return;
+      try {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => HomeShellScreen(profile: profile)),
+          (_) => false,
+        );
+      } catch (error, stackTrace) {
+        debugPrint('[OTP FLOW] navigation failed: $error');
+        debugPrint('$stackTrace');
+        _showMessage('تم التحقق لكن حدث خطأ بالانتقال. حاول مرة أخرى.');
+      }
     } on FirebaseAuthException catch (e) {
       debugPrint('[OTP FLOW] firebase exception: ${e.code}');
       if (e.code == 'missing-user-doc') {
@@ -159,8 +171,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       } else {
         _showMessage(widget.authService.mapFirebaseAuthError(e));
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('[OTP FLOW] unexpected error: $e');
+      debugPrint('$stackTrace');
       _showMessage('حدث خطأ غير متوقع. حاول مرة أخرى.');
     } finally {
       if (mounted) setState(() => _isLoading = false);

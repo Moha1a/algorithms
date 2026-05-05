@@ -147,6 +147,7 @@ class AuthService {
     required String role,
   }) async {
     final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
+    debugPrint('[LOGIN PRECHECK] rawPhone=$phoneNumber normalizedPhone=$normalizedPhone role=$role');
     final pass = password.trim();
     if (pass.length < 6) {
       throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
@@ -861,12 +862,16 @@ class AuthService {
     final digits = normalized.replaceAll(RegExp(r'\D'), '');
     final local = IraqiPhoneUtils.localPart(normalized);
     final withZero = local.startsWith('0') ? local : '0$local';
+    final withCountryAndZero = '+964$withZero';
+    final digitsWithZero = '964$withZero';
     return {
       normalized,
       digits,
       local,
       withZero,
       '+$digits',
+      withCountryAndZero,
+      digitsWithZero,
     }.where((e) => e.trim().isNotEmpty).toSet();
   }
 
@@ -876,22 +881,32 @@ class AuthService {
   }) async {
     final candidates = _phoneCandidates(normalizedPhone).toList(growable: false);
     const fields = ['phoneNumber', 'phone', 'normalizedPhone', 'mobile'];
+    debugPrint('[LOGIN LOOKUP] role=$role normalized=$normalizedPhone candidates=$candidates');
 
     for (final field in fields) {
       for (final value in candidates) {
+        debugPrint('[LOGIN LOOKUP] query field=$field value=$value');
         final snap = await _firestore
             .collection('users')
             .where(field, isEqualTo: value)
             .limit(10)
             .get()
             .timeout(const Duration(seconds: 8));
+        debugPrint('[LOGIN LOOKUP] field=$field value=$value docs=${snap.docs.length}');
         if (snap.docs.isEmpty) continue;
-        final docs = snap.docs.map((d) => d.data()).toList(growable: false);
+        final docs = snap.docs.map((d) {
+          final data = d.data();
+          debugPrint(
+            '[LOGIN LOOKUP] hit uid=${d.id} role=${(data['role'] ?? '').toString()} phoneNumber=${(data['phoneNumber'] ?? '').toString()}',
+          );
+          return data;
+        }).toList(growable: false);
         final selected = docs.firstWhere(
           (d) => (d['role'] ?? '').toString() == role,
           orElse: () => docs.first,
         );
         if (selected.isNotEmpty) {
+          debugPrint('[LOGIN LOOKUP] selected uid=${(selected['uid'] ?? '').toString()} role=${(selected['role'] ?? '').toString()}');
           return selected;
         }
       }
