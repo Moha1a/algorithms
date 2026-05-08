@@ -48,7 +48,7 @@
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>يحتاج تطبيق منفذك إلى موقعك لتحسين تجربة الطلبات ومتابعة الرحلات.</string>
 	<key>GMSApiKey</key>
-	<string>$(GMS_API_KEY)</string>
+	<string>AIzaSyAYudrnmapDXgCc0_GQwkNAh7OBITIyoOA</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
