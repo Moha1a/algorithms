@@ -164,7 +164,7 @@ class AuthService {
     required String role,
   }) async {
     final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
-    debugPrint('[LOGIN PRECHECK] rawPhone=$phoneNumber normalizedPhone=$normalizedPhone role=$role');
+    debugPrint('login_precheck_start rawPhone=$phoneNumber normalizedPhone=$normalizedPhone role=$role');
     final pass = password.trim();
     if (pass.length < 6) {
       throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
@@ -194,8 +194,10 @@ class AuthService {
     }
     final enteredHash = _hashPassword(pass).trim();
     if (savedHash != enteredHash) {
+      debugPrint('password_check_failure role=$role');
       throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
     }
+    debugPrint('password_check_success role=$role');
   }
 
   Future<Map<String, dynamic>> loginOrRegisterWithCredential({

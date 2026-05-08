@@ -256,6 +256,7 @@ class _AuthScreenState extends State<AuthScreen> {
           role: selectedRole,
         );
       }
+      debugPrint('otp_start_after_password_success role=$selectedRole');
       await _authService.verifyPhoneNumber(
         phoneNumber: normalizedPhone,
         verificationCompleted: (credential) async {
