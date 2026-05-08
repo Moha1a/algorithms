@@ -111,6 +111,8 @@ class MapScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     debugPrint('MAP_TAB_OPEN');
+    FirebaseCrashlytics.instance.log('map_tab_open');
+    FirebaseCrashlytics.instance.setCustomKey('map_open_source', 'map_tab');
     final uid = _safeString(profile['uid']);
     final role = _safeString(profile['role']);
     final field = role == 'outlet' ? 'outletId' : 'clientId';
@@ -211,6 +213,9 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
         final booking = snapshot.data?.data();
+        FirebaseCrashlytics.instance.setCustomKey('map_open_source', 'tracking_button');
+        FirebaseCrashlytics.instance.setCustomKey('booking_id', widget.bookingDocId);
+        FirebaseCrashlytics.instance.setCustomKey('current_user_role', widget.role);
         if (booking == null) {
           return Scaffold(
             appBar: AppBar(title: const Text('تفاصيل الرحلة')),
@@ -598,7 +603,6 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
         'publicNote': '',
         'createdAt': FieldValue.serverTimestamp(),
       });
-
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('شكراً، تم إرسال تقييمك.')));
     } finally {
@@ -875,6 +879,8 @@ class _LiveTripMapState extends State<_LiveTripMap> {
     final validOutlet = _safeLatLng(widget.outlet);
     final target = validClient ?? validOutlet;
     FirebaseCrashlytics.instance.setCustomKey('map_plugin_used', 'google_maps_flutter');
+    FirebaseCrashlytics.instance.setCustomKey('client_lat_lng_validity', validClient != null ? 'valid' : 'missing_or_invalid');
+    FirebaseCrashlytics.instance.setCustomKey('outlet_lat_lng_validity', validOutlet != null ? 'valid' : 'missing_or_invalid');
     FirebaseCrashlytics.instance.setCustomKey('has_client_location', validClient != null);
     FirebaseCrashlytics.instance.setCustomKey('has_outlet_location', validOutlet != null);
     FirebaseCrashlytics.instance.log('map_widget_build_start');
@@ -938,7 +944,7 @@ class _LiveTripMapState extends State<_LiveTripMap> {
                 _controller = c;
                 _fitBounds();
               },
-            ),
+      ),
     );
   }
 

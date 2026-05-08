@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -19,69 +20,102 @@ class LocationGuardService {
   bool _grantedInSession = false;
 
   Future<bool> ensureLocationEnabled(BuildContext context) async {
-    debugPrint('[LOCATION PERMISSION] ensure start');
-    LocationPermission permission;
+    final position = await requireCurrentLocation(
+      context,
+      title: 'مشاركة الموقع مطلوبة',
+      message: 'نحتاج موقعك الحالي حتى نحسب المسافة بدقة ونحسن تجربة الطلبات.',
+      crashlyticsKey: 'location_required_general',
+      accuracy: LocationAccuracy.low,
+      timeLimit: const Duration(seconds: 6),
+    );
+    return position != null;
+  }
+
+  Future<Position?> requireCurrentLocation(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required String crashlyticsKey,
+    LocationAccuracy accuracy = LocationAccuracy.best,
+    Duration timeLimit = const Duration(seconds: 12),
+  }) async {
+    debugPrint('[LOCATION PERMISSION] require start key=$crashlyticsKey');
+    FirebaseCrashlytics.instance.log(crashlyticsKey);
+    FirebaseCrashlytics.instance.setCustomKey('location_permission_context', crashlyticsKey);
+
     try {
-      permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
+      final serviceEnabled = await _isServiceEnabled();
+      if (!serviceEnabled) {
+        FirebaseCrashlytics.instance.setCustomKey('location_permission_status', 'service_disabled');
+        if (context.mounted) {
+          await _showLocationDialog(
+            context,
+            title: title,
+            message: '$message\n\nخدمة الموقع غير مفعّلة على الجهاز. فعّل خدمة الموقع ثم حاول مرة أخرى.',
+            primaryLabel: 'فتح إعدادات الموقع',
+            onPrimaryPressed: Geolocator.openLocationSettings,
+          );
+        }
+        return null;
       }
-    } catch (error) {
-      debugPrint('[LOCATION PERMISSION] check/request failed: $error');
-      if (!context.mounted) return false;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تعذر الوصول لإذن الموقع حالياً. يمكنك المتابعة بدون موقع تلقائي.'),
-        ),
-      );
-      return false;
-    }
 
-    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-      debugPrint('[LOCATION PERMISSION] denied=$permission');
-      if (!context.mounted) return false;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم رفض إذن الموقع. يمكنك المتابعة وإدخال البيانات يدوياً.'),
-        ),
-      );
-      return false;
-    }
+      var permission = await _checkPermission();
+      FirebaseCrashlytics.instance.setCustomKey('location_permission_status', permission.name);
 
-    if (_grantedInSession) return true;
+      if (permission == LocationPermission.denied) {
+        if (context.mounted) {
+          final shouldRequest = await _showLocationDialog(
+            context,
+            title: title,
+            message: message,
+            primaryLabel: 'السماح بالموقع',
+            onPrimaryPressed: () async {},
+          );
+          if (shouldRequest != true) return null;
+        }
+        permission = await Geolocator.requestPermission();
+        FirebaseCrashlytics.instance.setCustomKey('location_permission_status', permission.name);
+      }
 
-    var enabled = false;
-    try {
-      enabled = await Geolocator.isLocationServiceEnabled();
-    } catch (error) {
-      debugPrint('[LOCATION PERMISSION] service check failed: $error');
-    }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever || permission == LocationPermission.unableToDetermine) {
+        if (context.mounted) {
+          await _showLocationDialog(
+            context,
+            title: title,
+            message: '$message\n\nافتح الإعدادات وفعّل الوصول إلى الموقع لهذا التطبيق.',
+            primaryLabel: 'الذهاب إلى الإعدادات',
+            onPrimaryPressed: Geolocator.openAppSettings,
+          );
+        }
+        return null;
+      }
 
-    if (!enabled) {
-      try {
-        await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.low,
-            timeLimit: Duration(seconds: 4),
-          ),
+      final position = await getFreshCurrentPosition(accuracy: accuracy, timeLimit: timeLimit);
+      if (!_isValidCoordinate(position.latitude, position.longitude)) {
+        FirebaseCrashlytics.instance.setCustomKey('location_permission_status', 'invalid_coordinates');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تعذر تحديد موقع صالح حالياً. حاول مرة أخرى.')),
+          );
+        }
+        return null;
+      }
+
+      _grantedInSession = true;
+      FirebaseCrashlytics.instance.setCustomKey('location_permission_status', 'granted');
+      debugPrint('[LOCATION PERMISSION] require success key=$crashlyticsKey lat=${position.latitude} lng=${position.longitude}');
+      return position;
+    } catch (error, stackTrace) {
+      debugPrint('[LOCATION PERMISSION] require failed key=$crashlyticsKey error=$error');
+      debugPrint('$stackTrace');
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error is LocationFetchException ? error.message : 'تعذر الوصول إلى الموقع حالياً. حاول مرة أخرى.')),
         );
-        enabled = true;
-      } catch (_) {}
+      }
+      return null;
     }
-
-    if (!enabled) {
-      if (!context.mounted) return false;
-      await _showSettingsDialog(
-        context,
-        title: 'خدمة الموقع متوقفة',
-        message: 'خدمة الموقع غير متاحة حالياً. يمكنك المتابعة بدون تحديد موقع تلقائي.',
-      );
-      return false;
-    }
-
-    _grantedInSession = true;
-    debugPrint('[LOCATION PERMISSION] granted');
-    return true;
   }
 
   Future<Position> getFreshCurrentPosition({
@@ -95,16 +129,11 @@ class LocationGuardService {
     } catch (_) {
       throw LocationFetchException('تعذر الوصول إلى صلاحية الموقع على هذا الجهاز حالياً.');
     }
-    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-      throw LocationFetchException('تم رفض صلاحية الموقع. فعّلها من إعدادات التطبيق إذا رغبت.');
+    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever || permission == LocationPermission.unableToDetermine) {
+      throw LocationFetchException('تم رفض صلاحية الموقع. فعّلها من إعدادات التطبيق ثم حاول مرة أخرى.');
     }
 
-    bool enabled;
-    try {
-      enabled = await Geolocator.isLocationServiceEnabled();
-    } catch (_) {
-      enabled = false;
-    }
+    final enabled = await _isServiceEnabled();
     if (!enabled) {
       throw LocationFetchException('خدمة الموقع غير مفعّلة حالياً.');
     }
@@ -117,7 +146,7 @@ class LocationGuardService {
         ),
       ).timeout(timeLimit + const Duration(seconds: 2));
 
-      if (position.latitude.abs() < 0.00001 && position.longitude.abs() < 0.00001) {
+      if (!_isValidCoordinate(position.latitude, position.longitude)) {
         throw LocationFetchException('تم استلام إحداثيات غير صالحة.');
       }
       debugPrint('[LOCATION PERMISSION] getFreshCurrentPosition success');
@@ -126,37 +155,64 @@ class LocationGuardService {
       throw LocationFetchException('انتهت مهلة تحديد الموقع. حاول مرة أخرى.');
     } catch (error) {
       final message = error.toString().toLowerCase();
-      if (!kIsWeb && Platform.isIOS && (message.contains('simulator') || message.contains('kcle')) ) {
-        throw LocationFetchException('الموقع غير متاح حالياً في المحاكي. يمكنك المتابعة بدون موقع تلقائي.');
+      if (!kIsWeb && Platform.isIOS && (message.contains('simulator') || message.contains('kcle'))) {
+        throw LocationFetchException('الموقع غير متاح حالياً في المحاكي. جرّب على جهاز حقيقي.');
       }
       if (error is LocationFetchException) rethrow;
-      throw LocationFetchException('تعذر جلب موقعك حالياً. يمكنك المتابعة بدون موقع تلقائي.');
+      throw LocationFetchException('تعذر جلب موقعك حالياً. حاول مرة أخرى.');
     }
   }
 
-  Future<void> _showSettingsDialog(
+  Future<LocationPermission> _checkPermission() async {
+    try {
+      return await Geolocator.checkPermission();
+    } catch (error) {
+      debugPrint('[LOCATION PERMISSION] check failed: $error');
+      return LocationPermission.unableToDetermine;
+    }
+  }
+
+  Future<bool> _isServiceEnabled() async {
+    try {
+      return await Geolocator.isLocationServiceEnabled();
+    } catch (error) {
+      debugPrint('[LOCATION PERMISSION] service check failed: $error');
+      return false;
+    }
+  }
+
+  bool _isValidCoordinate(double lat, double lng) {
+    if (lat.isNaN || lng.isNaN || lat.isInfinite || lng.isInfinite) return false;
+    if (lat < -90 || lat > 90) return false;
+    if (lng < -180 || lng > 180) return false;
+    if (lat.abs() < 0.00001 && lng.abs() < 0.00001) return false;
+    return true;
+  }
+
+  Future<bool?> _showLocationDialog(
     BuildContext context, {
     required String title,
     required String message,
-  }) async {
-    await showDialog<void>(
+    required String primaryLabel,
+    required Future<void> Function() onPrimaryPressed,
+  }) {
+    return showDialog<bool>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (ctx) => AlertDialog(
         title: Text(title),
         content: Text(message),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('إغلاق'),
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('إلغاء'),
           ),
           FilledButton(
             onPressed: () async {
-              await Geolocator.openAppSettings();
-              await Geolocator.openLocationSettings();
-              if (ctx.mounted) Navigator.of(ctx).pop();
+              await onPrimaryPressed();
+              if (ctx.mounted) Navigator.of(ctx).pop(true);
             },
-            child: const Text('فتح الإعدادات'),
+            child: Text(primaryLabel),
           ),
         ],
       ),

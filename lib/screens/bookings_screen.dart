@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -289,8 +290,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
                                   _chip('المبلغ: ${MoneyUtils.iqdWithWords(double.tryParse(amount) ?? 0)}'),
                                   _chip('العمولة: ${_commissionText(amount, price)}'),
                                   _UserBadge(creatorId: (data['createdById'] ?? '').toString()),
-                                  if (ownerDistanceKm != null)
-                                    _chip('المسافة: ${ownerDistanceKm.toStringAsFixed(1)} كم (${_distanceLabel(ownerDistanceKm)})'),
+                                  _chip('المسافة: ${_formatDistanceKm(ownerDistanceKm)}'),
                                 ],
                               ),
                             ] else ...[
@@ -443,6 +443,14 @@ class _BookingsScreenState extends State<BookingsScreen> {
     return 'بعيد جدا';
   }
 
+  String _formatDistanceKm(double? km) {
+    FirebaseCrashlytics.instance.setCustomKey('distance_calculation_status', km == null ? 'missing' : 'available');
+    if (km == null || km.isNaN || km.isInfinite || km < 0) return 'المسافة غير متوفرة';
+    final meters = km * 1000;
+    if (meters < 1000) return '${meters.round()} م';
+    return '${km.toStringAsFixed(1)} كم (${_distanceLabel(km)})';
+  }
+
   double? _proposalDistanceKm(Map<String, dynamic> booking, Map<String, dynamic> proposal) {
     final clientLat = _toDouble(booking['clientLat']);
     final clientLng = _toDouble(booking['clientLng']);
@@ -534,9 +542,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
         final outletId = (p['outletId'] ?? '').toString();
         final price = (p['price'] ?? '').toString();
         final proposalDistanceKm = _proposalDistanceKm(data, Map<String, dynamic>.from(p));
-        final distanceText = proposalDistanceKm == null
-            ? ''
-            : ' — ${proposalDistanceKm.toStringAsFixed(1)} كم (${_distanceLabel(proposalDistanceKm)})';
+        final distanceText = ' — المسافة: ${_formatDistanceKm(proposalDistanceKm)}';
         widgets.add(
           FutureBuilder<double?>(
             future: _fetchAverageRating(outletId),
@@ -785,20 +791,23 @@ class _BookingsScreenState extends State<BookingsScreen> {
       }
     }
 
-    double? outletLat;
-    double? outletLng;
-    try {
-      final outletPosition = await LocationGuardService.instance.getFreshCurrentPosition();
-      outletLat = outletPosition.latitude;
-      outletLng = outletPosition.longitude;
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تعذر الوصول إلى موقع المنفذ حالياً. سيتم إرسال الاقتراح بدون الموقع.'),
-        ),
-      );
-    }
+    FirebaseCrashlytics.instance.log('price_proposal_location_required');
+    FirebaseCrashlytics.instance.setCustomKey('price_proposal_location_required', true);
+    final outletPosition = await LocationGuardService.instance.requireCurrentLocation(
+      context,
+      title: 'مشاركة الموقع مطلوبة لعرض السعر',
+      message: 'نحتاج موقع المنفذ الحالي حتى يظهر للعميل ويتم حساب المسافة بينكما قبل قبول الطلب.',
+      crashlyticsKey: 'price_proposal_location_required',
+    );
+    if (outletPosition == null) return;
+    final outletLat = outletPosition.latitude;
+    final outletLng = outletPosition.longitude;
+    final clientLatForDistance = _toDouble(bookingDataForValidation['clientLat']);
+    final clientLngForDistance = _toDouble(bookingDataForValidation['clientLng']);
+    final distanceKm = (clientLatForDistance == null || clientLngForDistance == null)
+        ? null
+        : Geolocator.distanceBetween(clientLatForDistance, clientLngForDistance, outletLat, outletLng) / 1000;
+    debugPrint('[ProposalFlow] provider distance=${_formatDistanceKm(distanceKm)}');
 
     final ref = FirebaseFirestore.instance.collection('bookings').doc(bookingDocId);
     String ownerId = '';
@@ -819,15 +828,15 @@ class _BookingsScreenState extends State<BookingsScreen> {
         );
       }
 
-      final item = {
+      final item = <String, dynamic>{
         'outletId': uid,
         'price': price,
         'createdAtMs': DateTime.now().millisecondsSinceEpoch,
       };
-      if (outletLat != null && outletLng != null) {
-        item['outletLat'] = outletLat;
-        item['outletLng'] = outletLng;
-      }
+      item['outletLat'] = outletLat;
+      item['outletLng'] = outletLng;
+      item['outletLocation'] = {'lat': outletLat, 'lng': outletLng};
+      if (distanceKm != null) item['distanceKm'] = distanceKm;
       if (idx >= 0) {
         proposals[idx] = item;
       } else {
@@ -887,21 +896,20 @@ class _BookingsScreenState extends State<BookingsScreen> {
 
     final outletSnap = await FirebaseFirestore.instance.collection('users').doc(outletId).get();
     final outletName = (outletSnap.data()?['fullName'] ?? outletSnap.data()?['outletName'] ?? outletId).toString();
-    final outletLat = _toDouble(acceptedProposal?['outletLat']);
-    final outletLng = _toDouble(acceptedProposal?['outletLng']);
-
-    final activeForOutlet = await FirebaseFirestore.instance
-        .collection('bookings')
-        .where('outletId', isEqualTo: outletId)
-        .where('status', whereIn: ['accepted', 'in_progress', 'awaiting_provider_code'])
-        .limit(1)
-        .get();
-    if (activeForOutlet.docs.isNotEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا يمكن للمنفذ قبول أكثر من طلب نشط واحد في نفس الوقت.')),
+    double? outletLat = _toDouble(acceptedProposal?['outletLat']);
+    double? outletLng = _toDouble(acceptedProposal?['outletLng']);
+    if (outletLat == null || outletLng == null) {
+      FirebaseCrashlytics.instance.log('accept_location_required');
+      FirebaseCrashlytics.instance.setCustomKey('accept_location_required', true);
+      final outletPosition = await LocationGuardService.instance.requireCurrentLocation(
+        context,
+        title: 'مشاركة الموقع مطلوبة لقبول الطلب',
+        message: 'نحتاج موقع المنفذ الحالي حتى يظهر للعميل ويتم حساب المسافة بينكما.',
+        crashlyticsKey: 'accept_location_required',
       );
-      return;
+      if (outletPosition == null) return;
+      outletLat = outletPosition.latitude;
+      outletLng = outletPosition.longitude;
     }
 
     try {
@@ -925,11 +933,9 @@ class _BookingsScreenState extends State<BookingsScreen> {
           'acceptedAt': FieldValue.serverTimestamp(),
           'outletName': outletName,
         };
-        if (outletLat != null && outletLng != null) {
-          payload['outletLat'] = outletLat;
-          payload['outletLng'] = outletLng;
-          payload['outletLocation'] = {'lat': outletLat, 'lng': outletLng};
-        }
+        payload['outletLat'] = outletLat;
+        payload['outletLng'] = outletLng;
+        payload['outletLocation'] = {'lat': outletLat, 'lng': outletLng};
         tx.update(bookingRef, payload);
       });
     } on FirebaseException catch (e) {

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 
 import '../services/location_guard_service.dart';
 import '../services/money_utils.dart';
@@ -150,6 +151,38 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     );
   }
 
+  Future<void> _requestNotificationsOptional() async {
+    try {
+      final current = await FirebaseMessaging.instance.getNotificationSettings();
+      FirebaseCrashlytics.instance.setCustomKey('notification_permission_status', current.authorizationStatus.name);
+      if (current.authorizationStatus == AuthorizationStatus.authorized ||
+          current.authorizationStatus == AuthorizationStatus.provisional) {
+        return;
+      }
+      if (!mounted) return;
+      final ask = await showDialog<bool>(
+        context: context,
+        barrierDismissible: true,
+        builder: (ctx) => AlertDialog(
+          title: const Text('تفعيل الإشعارات'),
+          content: const Text('تفعيل الإشعارات يساعدك تعرف العروض والردود بسرعة.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('لاحقاً')),
+            FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('تفعيل الإشعارات')),
+          ],
+        ),
+      );
+      if (ask != true) return;
+      final settings = await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
+      FirebaseCrashlytics.instance.setCustomKey('notification_permission_status', settings.authorizationStatus.name);
+      debugPrint('[REQUEST CREATE] notification permission=${settings.authorizationStatus}');
+    } catch (error, stackTrace) {
+      debugPrint('[REQUEST CREATE] optional notification permission failed: $error');
+      debugPrint('$stackTrace');
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+    }
+  }
+
   double? _parseMoney(String input) {
     var value = input.trim();
     if (value.isEmpty) return null;
@@ -192,22 +225,22 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       return;
     }
 
-    double? clientLat;
-    double? clientLng;
-    try {
-      final clientPosition = await LocationGuardService.instance.getFreshCurrentPosition();
-      clientLat = clientPosition.latitude;
-      clientLng = clientPosition.longitude;
-    } catch (e) {
-      debugPrint('[REQUEST CREATE] failed: $e');
-      debugPrint('[LOCATION PERMISSION] request create location unavailable: $e');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تعذر الوصول إلى الموقع حالياً. يمكنك المتابعة يدويًا بدون تحديد موقع تلقائي.'),
-        ),
-      );
+    FirebaseCrashlytics.instance.log('request_create_location_required');
+    FirebaseCrashlytics.instance.setCustomKey('request_create_location_required', true);
+    final clientPosition = await LocationGuardService.instance.requireCurrentLocation(
+      context,
+      title: 'مشاركة الموقع مطلوبة لإنشاء الطلب',
+      message: 'نحتاج موقعك الحالي حتى نعرض الطلب للمنافذ القريبة ونحسب المسافة بدقة.',
+      crashlyticsKey: 'request_create_location_required',
+    );
+    if (clientPosition == null) {
+      if (mounted) setState(() => _saving = false);
+      return;
     }
+    final clientLat = clientPosition.latitude;
+    final clientLng = clientPosition.longitude;
+
+    await _requestNotificationsOptional();
 
     try {
       if (role == 'client') {
@@ -268,11 +301,9 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         'requestOwnerRole': role,
         'createdAt': FieldValue.serverTimestamp(),
       };
-      if (clientLat != null && clientLng != null) {
-        payload['clientLat'] = clientLat;
-        payload['clientLng'] = clientLng;
-        payload['clientLocation'] = {'lat': clientLat, 'lng': clientLng};
-      }
+      payload['clientLat'] = clientLat;
+      payload['clientLng'] = clientLng;
+      payload['clientLocation'] = {'lat': clientLat, 'lng': clientLng};
       await ref.set(payload);
       debugPrint('[REQUEST CREATE] success bookingId=${ref.id}');
 
