@@ -49,6 +49,10 @@
 	<string>يحتاج تطبيق منفذك إلى موقعك لتحسين تجربة الطلبات ومتابعة الرحلات.</string>
 	<key>GMSApiKey</key>
 	<string>AIzaSyAYudrnmapDXgCc0_GQwkNAh7OBITIyoOA</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>comgooglemaps</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

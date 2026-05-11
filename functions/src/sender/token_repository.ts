@@ -9,6 +9,7 @@ function getDb(): FirebaseFirestore.Firestore {
 export type DeviceTokenRecord = {
   deviceId: string;
   token: string;
+  platform?: string;
 };
 
 export async function getActiveDeviceTokens(uid: string): Promise<DeviceTokenRecord[]> {
@@ -24,6 +25,7 @@ export async function getActiveDeviceTokens(uid: string): Promise<DeviceTokenRec
       return {
         deviceId: d.id,
         token: String(data.token || '').trim(),
+        platform: String(data.platform || '').trim(),
       };
     })
     .filter((d) => d.token);
@@ -37,7 +39,7 @@ export async function getActiveDeviceTokens(uid: string): Promise<DeviceTokenRec
   const legacyTokens = legacy.docs
     .map((d) => String((d.data() ?? {}).token || d.id || '').trim())
     .filter((x) => x)
-    .map((token, i) => ({deviceId: `legacy_${i}`, token}));
+    .map((token, i) => ({deviceId: `legacy_${i}`, token, platform: 'legacy'}));
 
   logInfo('Device tokens loaded from fcmTokens legacy', {uid: cleanUid, count: legacyTokens.length});
   return legacyTokens;

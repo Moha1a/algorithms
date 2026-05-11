@@ -8,7 +8,6 @@ import 'create_booking_screen.dart';
 import 'support_chat_screen.dart';
 import '../services/money_utils.dart';
 import '../services/location_guard_service.dart';
-import '../services/push_sender_service.dart';
 import 'map_screen.dart';
 
 enum BookingFilter { active, history }
@@ -854,30 +853,18 @@ class _BookingsScreenState extends State<BookingsScreen> {
     debugPrint('[ProposalFlow] proposal saved/updated bookingId=$bookingDocId ownerId=$ownerId');
     if (ownerId.isNotEmpty) {
       try {
-        debugPrint('[ProposalFlow] calling PushSenderService bookingId=$bookingDocId recipientUid=$ownerId');
-        final proposalsRaw = (bookingDataForValidation['priceProposals'] as List?) ?? const [];
-        double? oldPrice;
-        for (final raw in proposalsRaw) {
-          if (raw is Map && (raw['outletId'] ?? '').toString() == uid) {
-            oldPrice = double.tryParse((raw['price'] ?? '').toString());
-            break;
-          }
-        }
-        final type = oldPrice != null && oldPrice != price ? 'price_proposal_updated' : 'price_proposal';
-        final title = type == 'price_proposal_updated' ? 'تم تعديل عرض السعر ✏️' : 'عرض سعر جديد 💰';
-        final body = type == 'price_proposal_updated' ? 'قام المنفذ بتعديل السعر المقترح.' : 'تم اقتراح سعر جديد لطلبك.';
-        debugPrint('[ProposalFlow] notify owner type=$type bookingId=$bookingDocId ownerId=$ownerId');
-        await PushSenderService.instance.sendPush(
-          recipientUid: ownerId,
-          title: title,
-          body: body,
-          type: type,
-          bookingId: bookingDocId,
-          actorId: uid,
-        );
-        debugPrint('[ProposalFlow] push send success bookingId=$bookingDocId recipientUid=$ownerId');
+        await FirebaseFirestore.instance.collection('bookingEvents').add({
+          'type': 'booking_price_proposed',
+          'bookingId': bookingDocId,
+          'clientId': ownerId,
+          'outletId': uid,
+          'actorId': uid,
+          'price': price,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        debugPrint('[ProposalFlow] booking price proposal event created bookingId=$bookingDocId recipientUid=$ownerId');
       } catch (e) {
-        debugPrint('[ProposalFlow] push send failed bookingId=$bookingDocId recipientUid=$ownerId error=$e');
+        debugPrint('[ProposalFlow] booking price proposal event failed bookingId=$bookingDocId recipientUid=$ownerId error=$e');
       }
     }
   }
@@ -945,21 +932,25 @@ class _BookingsScreenState extends State<BookingsScreen> {
       );
       return;
     }
-    debugPrint('[ProposalFlow] notify accepted outlet bookingId=$bookingDocId outletId=$outletId');
-    await PushSenderService.instance.sendPush(
-      recipientUid: outletId,
-      title: 'تم قبول عرضك ✅',
-      body: 'تم قبول عرض السعر الخاص بك',
-      type: 'order_accepted',
-      bookingId: bookingDocId,
-      actorId: (widget.profile['uid'] ?? '').toString(),
-    );
-    debugPrint('[ProposalFlow] accepted notification sent bookingId=$bookingDocId outletId=$outletId');
+    final clientId = (widget.profile['uid'] ?? '').toString();
+    try {
+      await FirebaseFirestore.instance.collection('bookingEvents').add({
+        'type': 'booking_accepted',
+        'bookingId': bookingDocId,
+        'clientId': clientId,
+        'outletId': outletId,
+        'acceptedOutletId': outletId,
+        'actorId': clientId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      debugPrint('[ProposalFlow] booking accepted event created bookingId=$bookingDocId outletId=$outletId');
+    } catch (e) {
+      debugPrint('[ProposalFlow] booking accepted event failed bookingId=$bookingDocId outletId=$outletId error=$e');
+    }
     await _cancelOtherPendingOffersForOutlet(
       acceptedBookingDocId: bookingDocId,
       outletId: outletId,
     );
-    final clientId = (widget.profile['uid'] ?? '').toString();
     if (clientId.isNotEmpty) {
       await _createNotification(
         toUserId: clientId,

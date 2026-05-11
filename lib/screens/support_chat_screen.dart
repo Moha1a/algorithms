@@ -2,8 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../services/push_sender_service.dart';
-
 class SupportChatScreen extends StatefulWidget {
   const SupportChatScreen({
     super.key,
@@ -155,34 +153,7 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
 
     if (segments.first == 'booking_chats') {
       final bookingId = segments[1];
-      final snap = await FirebaseFirestore.instance.collection('bookings').doc(bookingId).get();
-      final data = snap.data() ?? <String, dynamic>{};
-      final clientId = (data['clientId'] ?? '').toString();
-      final outletId = (data['outletId'] ?? '').toString();
-      final peerId = widget.currentUserId == clientId ? outletId : clientId;
-      await FirebaseFirestore.instance.collection('bookingEvents').add({
-        'type': 'chat_message_created',
-        'bookingId': (data['bookingId'] ?? bookingId).toString(),
-        'clientId': clientId,
-        'outletId': outletId,
-        'actorId': widget.currentUserId,
-        'text': text.trim(),
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-      if (peerId.isNotEmpty) {
-        final senderSnap = await FirebaseFirestore.instance.collection('users').doc(widget.currentUserId).get();
-        final senderName = (senderSnap.data()?['fullName'] ?? senderSnap.data()?['outletName'] ?? 'رسالة جديدة').toString();
-        final safeMessage = text.trim().isNotEmpty ? text.trim() : 'أرسل رسالة جديدة';
-        await PushSenderService.instance.sendPush(
-          recipientUid: peerId,
-          title: senderName,
-          body: safeMessage,
-          type: 'new_message',
-          bookingId: (data['bookingId'] ?? bookingId).toString(),
-          actorId: widget.currentUserId,
-        );
-      }
-      debugPrint('[ChatFlow] booking chat event created bookingId=$bookingId sender=${widget.currentUserId}');
+      debugPrint('[ChatFlow] booking chat message stored; onChatMessageEvent will send remote push bookingId=$bookingId sender=${widget.currentUserId}');
       return;
     }
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 
 class PushSenderService {
@@ -30,8 +31,13 @@ class PushSenderService {
     if (recipientUid.trim().isEmpty) return;
 
     final client = HttpClient();
+    final crashlytics = FirebaseCrashlytics.instance;
     try {
       final endpoint = _resolveEndpoint();
+      crashlytics.setCustomKey('push_event_type', type);
+      crashlytics.setCustomKey('push_recipient_uid', recipientUid);
+      crashlytics.setCustomKey('push_send_success', false);
+      crashlytics.setCustomKey('push_send_failure', false);
       debugPrint('[PushSenderService] send type=$type to=$recipientUid bookingId=$bookingId endpoint=$endpoint');
       final req = await client.postUrl(Uri.parse(endpoint));
       req.headers.contentType = ContentType.json;
@@ -51,8 +57,12 @@ class PushSenderService {
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw HttpException('Push send failed with status ${res.statusCode}: $text', uri: Uri.parse(endpoint));
       }
+      crashlytics.setCustomKey('push_send_success', true);
+      debugPrint('[PushSenderService] send success type=$type to=$recipientUid status=${res.statusCode}');
     } catch (e) {
       debugPrint('[PushSenderService] send exception: $e');
+      crashlytics.setCustomKey('push_send_failure', true);
+      crashlytics.recordError(e, StackTrace.current, fatal: false);
       rethrow;
     } finally {
       client.close();

@@ -78,7 +78,7 @@ class MapScreen extends StatelessWidget {
       final freshData = fresh.data()!;
       final lat = _safeDouble(freshData['clientLat'], fallback: double.nan);
       final lng = _safeDouble(freshData['clientLng'], fallback: double.nan);
-      final hasValidCoordinates = lat.isFinite && lng.isFinite;
+      final hasValidCoordinates = lat.isFinite && lng.isFinite && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
       if (!hasValidCoordinates) {
         _showControlledMessage(context, 'تعذر تحديد الإحداثيات بدقة، سيتم فتح تفاصيل الطلب بشكل آمن.');
       }
@@ -749,14 +749,30 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
   }
 
   Future<void> _openMapLink(BuildContext context, {LatLng? client, LatLng? outlet}) async {
-    final destination = widget.role == 'client' ? (outlet ?? client) : (client ?? outlet);
-    final origin = widget.role == 'client' ? client : outlet;
-    if (destination == null) return;
+    final rawDestination = widget.role == 'client' ? (outlet ?? client) : (client ?? outlet);
+    final rawOrigin = widget.role == 'client' ? client : outlet;
+    final destination = _isValidLatLng(rawDestination) ? rawDestination : null;
+    final origin = _isValidLatLng(rawOrigin) ? rawOrigin : null;
+
+    if (destination == null) {
+      FirebaseCrashlytics.instance.log('map_directions_blocked_invalid_destination');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لا توجد إحداثيات صالحة لفتح الاتجاهات.')),
+        );
+      }
+      return;
+    }
 
     final googleMapsAppUri = Uri.parse(
       origin != null
           ? 'comgooglemaps://?saddr=${origin.latitude},${origin.longitude}&daddr=${destination.latitude},${destination.longitude}&directionsmode=driving'
-          : 'geo:${destination.latitude},${destination.longitude}?q=${destination.latitude},${destination.longitude}',
+          : 'comgooglemaps://?q=${destination.latitude},${destination.longitude}&center=${destination.latitude},${destination.longitude}&zoom=16',
+    );
+    final appleMapsUri = Uri.parse(
+      origin != null
+          ? 'http://maps.apple.com/?saddr=${origin.latitude},${origin.longitude}&daddr=${destination.latitude},${destination.longitude}&dirflg=d'
+          : 'http://maps.apple.com/?q=${destination.latitude},${destination.longitude}',
     );
     final webFallbackUri = Uri.parse(
       origin != null
@@ -764,21 +780,50 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
           : 'https://www.google.com/maps/search/?api=1&query=${destination.latitude},${destination.longitude}',
     );
 
-    if (await canLaunchUrl(googleMapsAppUri)) {
-      await launchUrl(googleMapsAppUri, mode: LaunchMode.externalApplication);
-      return;
-    }
-    if (await canLaunchUrl(webFallbackUri)) {
-      await launchUrl(webFallbackUri, mode: LaunchMode.externalApplication);
-      return;
+    final candidates = <({String source, Uri uri, bool requiresCanLaunch})>[
+      (source: 'google_maps_app', uri: googleMapsAppUri, requiresCanLaunch: true),
+      (source: 'apple_maps', uri: appleMapsUri, requiresCanLaunch: false),
+      (source: 'google_maps_web', uri: webFallbackUri, requiresCanLaunch: false),
+    ];
+
+    for (final candidate in candidates) {
+      try {
+        FirebaseCrashlytics.instance.setCustomKey('map_directions_launch_source', candidate.source);
+        if (candidate.requiresCanLaunch && !await canLaunchUrl(candidate.uri)) {
+          debugPrint('[MAP DIRECTIONS] ${candidate.source} unavailable');
+          continue;
+        }
+
+        final launched = await launchUrl(candidate.uri, mode: LaunchMode.externalApplication);
+        FirebaseCrashlytics.instance.setCustomKey('map_directions_launch_success', launched);
+        debugPrint('[MAP DIRECTIONS] source=${candidate.source} success=$launched');
+        if (launched) return;
+      } catch (error, stackTrace) {
+        debugPrint('[MAP DIRECTIONS] ${candidate.source} failed: $error');
+        FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+      }
     }
 
-    await Clipboard.setData(ClipboardData(text: webFallbackUri.toString()));
+    FirebaseCrashlytics.instance.setCustomKey('map_directions_launch_success', false);
+    FirebaseCrashlytics.instance.recordError(
+      StateError('Failed to launch Google Maps, Apple Maps, or browser fallback for directions.'),
+      StackTrace.current,
+      fatal: false,
+    );
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر فتح الخرائط تلقائيًا. تم نسخ الرابط كحل بديل.')),
+        const SnackBar(content: Text('تعذر فتح الاتجاهات. تأكد من توفر خرائط Google أو خرائط Apple ثم حاول مرة أخرى.')),
       );
     }
+  }
+
+  bool _isValidLatLng(LatLng? point) {
+    if (point == null) return false;
+    if (point.latitude.isNaN || point.longitude.isNaN) return false;
+    if (point.latitude.isInfinite || point.longitude.isInfinite) return false;
+    if (point.latitude < -90 || point.latitude > 90) return false;
+    if (point.longitude < -180 || point.longitude > 180) return false;
+    return true;
   }
 
   LatLng? _extractLatLng(Map<String, dynamic> booking, {required List<String> candidateRoots}) {
@@ -871,7 +916,14 @@ class _LiveTripMap extends StatefulWidget {
 }
 
 class _LiveTripMapState extends State<_LiveTripMap> {
+  static const MethodChannel _mapsChannel = MethodChannel('manfathak/maps');
   GoogleMapController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _logNativeMapDiagnostics();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -883,11 +935,14 @@ class _LiveTripMapState extends State<_LiveTripMap> {
     FirebaseCrashlytics.instance.setCustomKey('outlet_lat_lng_validity', validOutlet != null ? 'valid' : 'missing_or_invalid');
     FirebaseCrashlytics.instance.setCustomKey('has_client_location', validClient != null);
     FirebaseCrashlytics.instance.setCustomKey('has_outlet_location', validOutlet != null);
+    FirebaseCrashlytics.instance.setCustomKey('markers_count', (validClient == null ? 0 : 1) + (validOutlet == null ? 0 : 1));
+    FirebaseCrashlytics.instance.setCustomKey('initial_camera_valid', target != null);
+    FirebaseCrashlytics.instance.setCustomKey('google_map_created', false);
     FirebaseCrashlytics.instance.log('map_widget_build_start');
     if (target == null) {
       FirebaseCrashlytics.instance.log('map_open_blocked_invalid_coordinates');
-      return const Center(
-        child: Text('لا توجد إحداثيات متاحة لهذه الرحلة حالياً.'),
+      return const _MapUnavailablePlaceholder(
+        message: 'لا توجد إحداثيات صالحة لعرض الخريطة لهذا الطلب.',
       );
     }
 
@@ -941,11 +996,52 @@ class _LiveTripMapState extends State<_LiveTripMap> {
               onMapCreated: (c) {
                 debugPrint('[MAP INIT] map created');
                 FirebaseCrashlytics.instance.log('map_widget_created');
+                FirebaseCrashlytics.instance.setCustomKey('google_map_created', true);
+                FirebaseCrashlytics.instance.setCustomKey('markers_count', markers.length);
                 _controller = c;
                 _fitBounds();
               },
       ),
     );
+  }
+
+  Future<void> _logNativeMapDiagnostics() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+
+    try {
+      final diagnostics = await _mapsChannel.invokeMapMethod<String, dynamic>('diagnostics') ?? const {};
+      final keyPresent = diagnostics['ios_maps_key_present'] == true;
+      final keySource = (diagnostics['ios_maps_key_source'] ?? 'unknown').toString();
+      final keyLength = diagnostics['ios_maps_key_length'] is int ? diagnostics['ios_maps_key_length'] as int : 0;
+      final rawPrefix = (diagnostics['ios_maps_key_prefix_only'] ?? '').toString();
+      final keyPrefix = rawPrefix.length > 6 ? rawPrefix.substring(0, 6) : rawPrefix;
+      final sdkInitialized = diagnostics['map_sdk_initialized'] == true;
+      final possibleAuthIssue = diagnostics['map_tiles_possible_auth_issue'] == true;
+
+      FirebaseCrashlytics.instance.setCustomKey('map_plugin_used', 'google_maps_flutter');
+      FirebaseCrashlytics.instance.setCustomKey('ios_maps_key_present', keyPresent);
+      FirebaseCrashlytics.instance.setCustomKey('ios_maps_key_source', keySource);
+      FirebaseCrashlytics.instance.setCustomKey('ios_maps_key_length', keyLength);
+      FirebaseCrashlytics.instance.setCustomKey('ios_maps_key_prefix_only', keyPrefix);
+      FirebaseCrashlytics.instance.setCustomKey('map_sdk_initialized', sdkInitialized);
+      FirebaseCrashlytics.instance.setCustomKey('map_tiles_possible_auth_issue', possibleAuthIssue);
+      FirebaseCrashlytics.instance.log(
+        'ios_google_maps_diagnostics keyPresent=$keyPresent source=$keySource length=$keyLength sdkInitialized=$sdkInitialized',
+      );
+      debugPrint(
+        '[MAP DIAGNOSTICS] plugin=google_maps_flutter keyPresent=$keyPresent source=$keySource keyLength=$keyLength keyPrefix=$keyPrefix sdkInitialized=$sdkInitialized',
+      );
+      if (!keyPresent || !sdkInitialized) {
+        FirebaseCrashlytics.instance.recordError(
+          StateError('iOS Google Maps SDK is not initialized with a valid Maps SDK for iOS key. Check bundle id restrictions, API restrictions, and billing.'),
+          StackTrace.current,
+          fatal: false,
+        );
+      }
+    } catch (error, stackTrace) {
+      debugPrint('[MAP DIAGNOSTICS] native diagnostics failed: $error');
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+    }
   }
 
   Future<void> _fitBounds() async {
@@ -1000,5 +1096,34 @@ class _LiveTripMapState extends State<_LiveTripMap> {
     if (point.latitude < -90 || point.latitude > 90) return null;
     if (point.longitude < -180 || point.longitude > 180) return null;
     return point;
+  }
+}
+
+class _MapUnavailablePlaceholder extends StatelessWidget {
+  const _MapUnavailablePlaceholder({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Color(0xFF374151),
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
   }
 }

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -103,22 +104,31 @@ class PushNotificationsService {
       }
 
       await _requestPermissions();
+      if (!kIsWeb && Platform.isIOS) {
+        await _messaging.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
+      }
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
         try {
+          FirebaseCrashlytics.instance.log('push_on_message messageId=${message.messageId ?? ''}');
+          FirebaseCrashlytics.instance.setCustomKey('push_event_type', message.data['type']?.toString() ?? '');
           await _showForegroundNotification(message);
         } catch (error, stackTrace) {
           debugPrint('[PushNotificationsService] onMessage handling failed (ignored): $error');
           debugPrint('$stackTrace');
+          FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
         }
       });
 
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         try {
+          FirebaseCrashlytics.instance.log('push_on_message_opened_app messageId=${message.messageId ?? ''}');
+          FirebaseCrashlytics.instance.setCustomKey('push_event_type', message.data['type']?.toString() ?? '');
           _routeByPayload(message.data, navigatorKey);
         } catch (error, stackTrace) {
           debugPrint('[PushNotificationsService] onMessageOpenedApp failed (ignored): $error');
           debugPrint('$stackTrace');
+          FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
         }
       });
 
@@ -128,8 +138,11 @@ class PushNotificationsService {
       } catch (error, stackTrace) {
         debugPrint('[PushNotificationsService] getInitialMessage failed (ignored): $error');
         debugPrint('$stackTrace');
+        FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
       }
       if (initialMessage != null) {
+        FirebaseCrashlytics.instance.log('push_initial_message messageId=${initialMessage.messageId ?? ''}');
+        FirebaseCrashlytics.instance.setCustomKey('push_event_type', initialMessage.data['type']?.toString() ?? '');
         _routeByPayload(initialMessage.data, navigatorKey);
       }
 
@@ -144,6 +157,7 @@ class PushNotificationsService {
         } catch (error, stackTrace) {
           debugPrint('[PushNotificationsService] token registration failed: $error');
           debugPrint('$stackTrace');
+          FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
         }
       });
 
@@ -155,6 +169,7 @@ class PushNotificationsService {
         } catch (error, stackTrace) {
           debugPrint('[PushNotificationsService] initial token registration failed: $error');
           debugPrint('$stackTrace');
+          FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
         }
       }
     } catch (error, stackTrace) {
@@ -177,6 +192,7 @@ class PushNotificationsService {
         sound: true,
         provisional: false,
       );
+      FirebaseCrashlytics.instance.setCustomKey('notification_permission_status', settings.authorizationStatus.name);
       debugPrint('PUSH_INIT_SUCCESS: permission=${settings.authorizationStatus}');
     } catch (error, stackTrace) {
       if (_isExpectedSimulatorPushError(error)) {
@@ -185,6 +201,7 @@ class PushNotificationsService {
       }
       debugPrint('[PushNotificationsService] requestPermission failed: $error');
       debugPrint('$stackTrace');
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
       rethrow;
     }
 
