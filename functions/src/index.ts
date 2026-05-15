@@ -9,6 +9,7 @@ import {onNotificationJobCreated} from './jobs/on_notification_job_created';
 import {onArrivalMarkedNotifyProvider} from './domain/arrival_marked_notification';
 import {onBookingEventCreated} from './domain/events';
 import {onChatMessageEvent} from './domain/on_chat_message_event';
+import {onBookingCreatedNotifyOutlets} from './domain/on_booking_created_notification';
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -23,3 +24,4 @@ exports.cancelOtherPendingOffersForAcceptedOutlet = cancelOtherPendingOffersForA
 exports.onArrivalMarkedNotifyProvider = onArrivalMarkedNotifyProvider;
 exports.onBookingEventCreated = onBookingEventCreated;
 exports.onChatMessageEvent = onChatMessageEvent;
+exports.onBookingCreatedNotifyOutlets = onBookingCreatedNotifyOutlets;
