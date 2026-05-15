@@ -24,10 +24,12 @@ class PushNotificationsService {
   static final FlutterLocalNotificationsPlugin _local = FlutterLocalNotificationsPlugin();
   static const bool appPreviewSafeMode =
       bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
+  static final Map<String, DateTime> _recentLocalNotificationIds = <String, DateTime>{};
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   StreamSubscription<User?>? _authSub;
   bool _initialized = false;
+  final Map<String, DateTime> _recentForegroundNotificationIds = <String, DateTime>{};
 
   static Future<void> ensureLocalNotificationsInitialized() async {
     if (kIsWeb) return;
@@ -52,15 +54,29 @@ class PushNotificationsService {
     debugPrint('[PushNotificationsService] channel created: $highImportanceChannelId');
   }
 
-  static Future<void> showBackgroundNotification(RemoteMessage message) async {
+  static Future<void> showBackgroundNotification(
+    RemoteMessage message, {
+    bool allowNotificationPayloadLocalDisplay = false,
+  }) async {
     if (kIsWeb) return;
+    if (message.notification != null && !allowNotificationPayloadLocalDisplay) {
+      debugPrint('[PushNotificationsService] native notification payload handled by OS; local display skipped.');
+      return;
+    }
     await ensureLocalNotificationsInitialized();
     final data = message.data;
     final title = message.notification?.title ?? data['title']?.toString() ?? 'إشعار جديد';
     final body = message.notification?.body ?? data['body']?.toString() ?? '';
+    final dedupeId = _notificationDedupeIdFor(message);
+    if (_shouldSkipDuplicateLocalNotification(dedupeId)) {
+      FirebaseCrashlytics.instance.setCustomKey('duplicate_notification_skipped', true);
+      FirebaseCrashlytics.instance.setCustomKey('push_dedupe_key', dedupeId);
+      debugPrint('[PushNotificationsService] duplicate local notification skipped dedupeId=$dedupeId');
+      return;
+    }
 
     await _local.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      dedupeId.hashCode & 0x7fffffff,
       title,
       body,
       const NotificationDetails(
@@ -231,7 +247,56 @@ class PushNotificationsService {
       debugPrint('[PushNotificationsService] web foreground message: ${message.data}');
       return;
     }
-    await showBackgroundNotification(message);
+    if (Platform.isIOS && message.notification != null) {
+      debugPrint('[PushNotificationsService] iOS foreground notification payload displayed by FCM presentation options; local display skipped.');
+      return;
+    }
+    final dedupeId = _notificationDedupeId(message);
+    if (_shouldSkipDuplicateForegroundNotification(dedupeId)) {
+      FirebaseCrashlytics.instance.setCustomKey('duplicate_notification_skipped', true);
+      FirebaseCrashlytics.instance.setCustomKey('push_dedupe_key', dedupeId);
+      debugPrint('[PushNotificationsService] duplicate foreground notification skipped dedupeId=$dedupeId');
+      return;
+    }
+    await showBackgroundNotification(message, allowNotificationPayloadLocalDisplay: true);
+  }
+
+  String _notificationDedupeId(RemoteMessage message) {
+    return _notificationDedupeIdFor(message);
+  }
+
+  static String _notificationDedupeIdFor(RemoteMessage message) {
+    final data = message.data;
+    final bookingId = data['bookingId']?.toString() ?? '';
+    final type = data['type']?.toString() ?? '';
+    final dedupeKey = data['dedupeKey']?.toString() ?? '';
+    return dedupeKey.isNotEmpty
+        ? dedupeKey
+        : message.messageId ??
+            message.collapseKey ??
+            '$type|$bookingId|${message.notification?.title ?? ''}|${message.notification?.body ?? ''}';
+  }
+
+  static bool _shouldSkipDuplicateLocalNotification(String dedupeId) {
+    final now = DateTime.now();
+    _recentLocalNotificationIds.removeWhere((_, seenAt) => now.difference(seenAt) > const Duration(minutes: 2));
+    if (dedupeId.isEmpty) return false;
+    if (_recentLocalNotificationIds.containsKey(dedupeId)) {
+      return true;
+    }
+    _recentLocalNotificationIds[dedupeId] = now;
+    return false;
+  }
+
+  bool _shouldSkipDuplicateForegroundNotification(String dedupeId) {
+    final now = DateTime.now();
+    _recentForegroundNotificationIds.removeWhere((_, seenAt) => now.difference(seenAt) > const Duration(minutes: 2));
+    if (dedupeId.isEmpty) return false;
+    if (_recentForegroundNotificationIds.containsKey(dedupeId)) {
+      return true;
+    }
+    _recentForegroundNotificationIds[dedupeId] = now;
+    return false;
   }
 
   Map<String, dynamic> _decodePayload(String? payload) {

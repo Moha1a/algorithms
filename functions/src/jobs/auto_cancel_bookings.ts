@@ -1,10 +1,77 @@
 import * as admin from 'firebase-admin';
 import {onSchedule} from 'firebase-functions/v2/scheduler';
 
-import {logInfo} from '../utils/logger';
+import {buildNotificationJob} from '../domain/job_builder';
+import {runIdempotent} from '../utils/idempotency';
+import {logError, logInfo} from '../utils/logger';
 
 function getDb(): FirebaseFirestore.Firestore {
   return admin.firestore();
+}
+
+const ACTIVE_STATUSES = new Set(['pending', 'accepted', 'in_progress', 'awaiting_provider_code']);
+const TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'rejected', 'closed']);
+const ELEVEN_HOURS_MS = 11 * 60 * 60 * 1000;
+
+function clean(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function extractCreatedAtMillis(data: FirebaseFirestore.DocumentData): number | null {
+  const candidates = [data.createdAt, data.requestCreatedAt];
+  for (const candidate of candidates) {
+    if (candidate instanceof admin.firestore.Timestamp) {
+      return candidate.toMillis();
+    }
+  }
+  return null;
+}
+
+async function createAutoCancelNotification(params: {
+  bookingId: string;
+  recipientUid: string;
+  actorId: string;
+}): Promise<void> {
+  const {bookingId, recipientUid, actorId} = params;
+  const dedupeKey = `booking_auto_cancelled_11h:${bookingId}:${recipientUid}`;
+
+  await runIdempotent({
+    dedupeKey,
+    metadata: {
+      push_event_type: 'booking_auto_cancelled_11h',
+      push_dedupe_key: dedupeKey,
+      push_actor_uid: actorId,
+      push_recipient_uid: recipientUid,
+      push_booking_id: bookingId,
+    },
+    run: async () => {
+      await getDb().collection('notifications').add({
+        toUserId: recipientUid,
+        type: 'booking_auto_cancelled_11h',
+        bookingId,
+        title: 'تم إلغاء الطلب تلقائياً',
+        body: 'تم إلغاء الطلب لأنه لم يكتمل خلال 11 ساعة.',
+        isRead: false,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      const job = buildNotificationJob({
+        type: 'booking_auto_cancelled_11h',
+        recipientUid,
+        bookingId,
+        actorId,
+        screen: 'booking_details',
+        dedupeKey,
+        sourceEventId: `auto_cancel_${bookingId}`,
+        notification: {
+          title: 'تم إلغاء الطلب تلقائياً',
+          body: 'تم إلغاء الطلب لأنه لم يكتمل خلال 11 ساعة.',
+        },
+        data: {dedupeKey},
+      });
+      await getDb().collection('notificationJobs').add(job);
+    },
+  });
 }
 
 export const autoCancelStaleBookings = onSchedule(
@@ -12,46 +79,90 @@ export const autoCancelStaleBookings = onSchedule(
   async () => {
     const db = getDb();
     const now = Date.now();
-    const acceptedThreshold = now - 3 * 60 * 60 * 1000; // 3 hours
-    const awaitingThreshold = now - 1 * 60 * 60 * 1000; // 1 hour
+    const threshold = now - ELEVEN_HOURS_MS;
 
-    const acceptedSnap = await db
+    const activeSnap = await db
       .collection('bookings')
-      .where('status', '==', 'accepted')
-      .where('acceptedAt', '<=', admin.firestore.Timestamp.fromMillis(acceptedThreshold))
+      .where('status', 'in', Array.from(ACTIVE_STATUSES))
       .get();
 
-    let cancelledAccepted = 0;
-    for (const doc of acceptedSnap.docs) {
-      const d = doc.data() ?? {};
-      if (d.arrivalMarkedAt) continue;
-      await doc.ref.update({
-        status: 'cancelled',
-        cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
-        cancelReason: 'auto_cancel_no_arrival_within_3h',
-      });
-      cancelledAccepted += 1;
-    }
+    let scanned = 0;
+    let cancelled = 0;
+    let skippedCompleted = 0;
+    let skippedAlreadyCancelled = 0;
+    let skippedMissingCreatedAt = 0;
+    let skippedNotExpired = 0;
 
-    const awaitingSnap = await db
-      .collection('bookings')
-      .where('status', '==', 'awaiting_provider_code')
-      .where('arrivalMarkedAt', '<=', admin.firestore.Timestamp.fromMillis(awaitingThreshold))
-      .get();
+    for (const doc of activeSnap.docs) {
+      scanned += 1;
+      const data = doc.data() ?? {};
+      const bookingId = clean(data.bookingId) || doc.id;
+      const status = clean(data.status);
 
-    let cancelledAwaiting = 0;
-    for (const doc of awaitingSnap.docs) {
-      await doc.ref.update({
-        status: 'cancelled',
-        cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
-        cancelReason: 'auto_cancel_no_completion_within_1h',
-      });
-      cancelledAwaiting += 1;
+      if (TERMINAL_STATUSES.has(status)) {
+        if (status == 'completed') {
+          skippedCompleted += 1;
+        } else {
+          skippedAlreadyCancelled += 1;
+        }
+        continue;
+      }
+
+      const createdAtMillis = extractCreatedAtMillis(data);
+      if (createdAtMillis == null) {
+        skippedMissingCreatedAt += 1;
+        logInfo('autoCancelStaleBookings skipped: missing createdAt', {
+          bookingId,
+          status,
+        });
+        continue;
+      }
+
+      if (createdAtMillis > threshold) {
+        skippedNotExpired += 1;
+        continue;
+      }
+
+      try {
+        await doc.ref.set(
+          {
+            status: 'cancelled',
+            cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+            cancelReason: 'auto_timeout_11_hours',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          {merge: true}
+        );
+
+        const clientId = clean(data.clientId) || clean(data.createdById);
+        const outletId = clean(data.outletId);
+        const recipients = Array.from(new Set([clientId, outletId].filter((uid) => uid)));
+        for (const recipientUid of recipients) {
+          await createAutoCancelNotification({
+            bookingId,
+            recipientUid,
+            actorId: 'system_auto_cancel',
+          });
+        }
+
+        cancelled += 1;
+      } catch (error) {
+        logError('autoCancelStaleBookings failed to cancel booking', {
+          bookingId,
+          status,
+          error: String((error as Error)?.message || error),
+        });
+      }
     }
 
     logInfo('autoCancelStaleBookings finished', {
-      cancelledAccepted,
-      cancelledAwaiting,
+      booking_auto_cancel_scan_count: scanned,
+      booking_auto_cancel_cancelled_count: cancelled,
+      booking_auto_cancel_skipped_count: skippedCompleted + skippedAlreadyCancelled + skippedMissingCreatedAt + skippedNotExpired,
+      skipped_completed: skippedCompleted,
+      skipped_already_cancelled: skippedAlreadyCancelled,
+      skipped_missing_createdAt: skippedMissingCreatedAt,
+      skipped_not_expired: skippedNotExpired,
     });
   }
 );

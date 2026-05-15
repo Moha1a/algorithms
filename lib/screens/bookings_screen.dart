@@ -39,6 +39,8 @@ class BookingsScreen extends StatefulWidget {
 }
 
 class _BookingsScreenState extends State<BookingsScreen> {
+  static const String _rashidOutletName = 'منفذ الراشد';
+
   BookingFilter _filter = BookingFilter.active;
   OutletRequestTab _outletTab = OutletRequestTab.clientRequests;
   OutletTypeFilter _outletType = OutletTypeFilter.withdraw;
@@ -123,24 +125,38 @@ class _BookingsScreenState extends State<BookingsScreen> {
           ),
           if (role == 'outlet' && widget.showRequestOwnerTabs)
             _SegmentContainer(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _FilterChip(
-                      label: 'طلبات العملاء',
-                      selected: effectiveOutletTab == OutletRequestTab.clientRequests,
-                      onTap: () => setState(() => _outletTab = OutletRequestTab.clientRequests),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _FilterChip(
-                      label: 'طلبات المنافذ',
-                      selected: effectiveOutletTab == OutletRequestTab.outletRequests,
-                      onTap: () => setState(() => _outletTab = OutletRequestTab.outletRequests),
-                    ),
-                  ),
-                ],
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: _pendingRequestsBadgeStream('client'),
+                builder: (context, clientBadgeSnap) {
+                  final clientPending = clientBadgeSnap.data?.docs.length ?? 0;
+                  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: _pendingRequestsBadgeStream('outlet'),
+                    builder: (context, outletBadgeSnap) {
+                      final outletPending = outletBadgeSnap.data?.docs.length ?? 0;
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: _FilterChip(
+                              label: 'طلبات العملاء',
+                              selected: effectiveOutletTab == OutletRequestTab.clientRequests,
+                              badgeCount: clientPending,
+                              onTap: () => setState(() => _outletTab = OutletRequestTab.clientRequests),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _FilterChip(
+                              label: 'طلبات المنافذ',
+                              selected: effectiveOutletTab == OutletRequestTab.outletRequests,
+                              badgeCount: outletPending,
+                              onTap: () => setState(() => _outletTab = OutletRequestTab.outletRequests),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
               ),
             ),
           if (role == 'outlet' && !widget.forOwnRequests)
@@ -288,7 +304,9 @@ class _BookingsScreenState extends State<BookingsScreen> {
                                 children: [
                                   _chip('المبلغ: ${MoneyUtils.iqdWithWords(double.tryParse(amount) ?? 0)}'),
                                   _chip('العمولة: ${_commissionText(amount, price)}'),
+                                  if (type == 'discharge') _chip('العمولة تدفع لصاحب الطلب'),
                                   _UserBadge(creatorId: (data['createdById'] ?? '').toString()),
+                                  _chip('مصرف البطاقة: ${(data['cardBank'] ?? 'مصرف الرافدين').toString()}'),
                                   _chip('المسافة: ${_formatDistanceKm(ownerDistanceKm)}'),
                                 ],
                               ),
@@ -304,7 +322,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         const Text(
-                                          'الطلب',
+                                          'نوع الطلب',
                                           style: TextStyle(
                                             fontWeight: FontWeight.w700,
                                             fontSize: 12,
@@ -313,7 +331,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          '#${_shortBookingId(bookingId)}',
+                                          _typeLabel(type),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
@@ -352,7 +370,9 @@ class _BookingsScreenState extends State<BookingsScreen> {
                                 runSpacing: 8,
                                 children: [
                                   _chip('النوع: ${_typeLabel(type)}'),
-                                  _chip('السعر: $price'),
+                                  _chip('العمولة: ${MoneyUtils.formatIqD(double.tryParse(price) ?? 0)}'),
+                                  if (type == 'discharge') _chip('العمولة تدفع لصاحب الطلب'),
+                                  _chip('مصرف البطاقة: ${(data['cardBank'] ?? 'مصرف الرافدين').toString()}'),
                                 ],
                               ),
                             ],
@@ -414,6 +434,14 @@ class _BookingsScreenState extends State<BookingsScreen> {
       return base.where('status', isEqualTo: 'pending').where('requestOwnerRole', isEqualTo: requestOwnerRole).where('type', isEqualTo: typeValue);
     }
     return base.where('clientId', isEqualTo: uid);
+  }
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> _pendingRequestsBadgeStream(String requestOwnerRole) {
+    return FirebaseFirestore.instance
+        .collection('bookings')
+        .where('status', isEqualTo: 'pending')
+        .where('requestOwnerRole', isEqualTo: requestOwnerRole)
+        .snapshots();
   }
 
   bool _matchesFilter(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
@@ -495,10 +523,35 @@ class _BookingsScreenState extends State<BookingsScreen> {
     return MoneyUtils.iqdWithWords(commission);
   }
 
-  String _shortBookingId(String bookingId) {
-    final clean = bookingId.trim();
-    if (clean.length <= 10) return clean;
-    return '${clean.substring(0, 6)}...${clean.substring(clean.length - 4)}';
+  String _normalizedName(Object? value) {
+    return (value ?? '').toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  bool get _isRashidOutlet {
+    final role = (widget.profile['role'] ?? '').toString();
+    if (role != 'outlet') return false;
+    final target = _normalizedName(_rashidOutletName);
+    return [
+      widget.profile['outletName'],
+      widget.profile['fullName'],
+      widget.profile['name'],
+    ].any((name) => _normalizedName(name) == target);
+  }
+
+  String _outletDisplayName(Map<String, dynamic>? data, {String fallback = _rashidOutletName}) {
+    final outletName = _normalizedName(data?['outletName']);
+    if (outletName.isNotEmpty) return outletName;
+    final fullName = _normalizedName(data?['fullName']);
+    if (fullName.isNotEmpty) return fullName;
+    return fallback;
+  }
+
+  double _acceptedCommissionFromBooking(Map<String, dynamic> booking) {
+    final commission = booking['commission'];
+    if (commission is num) return commission.toDouble();
+    final price = booking['price'];
+    if (price is num) return price.toDouble();
+    return double.tryParse((price ?? commission ?? '0').toString()) ?? 0;
   }
 
   String _cancelReasonLabel(String reason) {
@@ -523,10 +576,20 @@ class _BookingsScreenState extends State<BookingsScreen> {
     final isPending = status == 'pending';
     final acceptedOutlet = (data['outletId'] ?? '').toString();
     final bookingId = (data['bookingId'] ?? bookingDocId).toString();
+    final isOwner = (data['createdById'] ?? data['clientId'] ?? '').toString() == uid;
 
     final widgets = <Widget>[];
 
-    if (role == 'outlet' && isPending) {
+    if (role == 'outlet' && isPending && !isOwner) {
+      if (_isRashidOutlet) {
+        widgets.add(
+          FilledButton.icon(
+            onPressed: () => _acceptDirectlyAsRashid(bookingDocId),
+            icon: const Icon(Icons.verified_rounded),
+            label: const Text('موافقة مباشرة'),
+          ),
+        );
+      }
       final hasMyProposal = proposals.any((p) => (p['outletId'] ?? '').toString() == uid);
       widgets.add(
         OutlinedButton(
@@ -541,19 +604,16 @@ class _BookingsScreenState extends State<BookingsScreen> {
         final outletId = (p['outletId'] ?? '').toString();
         final price = (p['price'] ?? '').toString();
         final proposalDistanceKm = _proposalDistanceKm(data, Map<String, dynamic>.from(p));
-        final distanceText = ' — المسافة: ${_formatDistanceKm(proposalDistanceKm)}';
         widgets.add(
-          FutureBuilder<double?>(
-            future: _fetchAverageRating(outletId),
+          FutureBuilder<_OutletOfferProfile>(
+            future: _fetchOutletOfferProfile(outletId),
             builder: (context, snap) {
-              final ratingText = snap.data == null ? 'بدون تقييم' : '⭐ ${snap.data!.toStringAsFixed(1)}';
-              return OutlinedButton(
-                onPressed: () => _acceptProposal(bookingDocId, outletId, price),
-                child: Text(
-                  'قبول عرض $price من $outletId $ratingText$distanceText',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+              final profile = snap.data ?? _OutletOfferProfile.placeholder();
+              return _ProposalOfferCard(
+                profile: profile,
+                price: double.tryParse(price) ?? 0,
+                distanceText: _formatDistanceKm(proposalDistanceKm),
+                onAccept: () => _acceptProposal(bookingDocId, outletId, price),
               );
             },
           ),
@@ -608,7 +668,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
     }
 
 
-    final isOwner = (data['createdById'] ?? data['clientId'] ?? '').toString() == uid;
     if (isOwner && status == 'pending') {
       widgets.add(
         OutlinedButton(
@@ -650,7 +709,16 @@ class _BookingsScreenState extends State<BookingsScreen> {
     }
 
     if (widgets.isEmpty) return const SizedBox.shrink();
-    return Wrap(spacing: 8, runSpacing: 8, children: widgets);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < widgets.length; i += 1)
+          Padding(
+            padding: EdgeInsets.only(top: i == 0 ? 0 : 8),
+            child: widgets[i],
+          ),
+      ],
+    );
   }
 
   Widget _chatButtonWithUnread({
@@ -739,6 +807,16 @@ class _BookingsScreenState extends State<BookingsScreen> {
 
     final bookingSnapForValidation = await FirebaseFirestore.instance.collection('bookings').doc(bookingDocId).get();
     final bookingDataForValidation = bookingSnapForValidation.data() ?? <String, dynamic>{};
+    final ownerIdForValidation = (bookingDataForValidation['createdById'] ?? bookingDataForValidation['clientId'] ?? '').toString();
+    if (ownerIdForValidation == uid) {
+      FirebaseCrashlytics.instance.log('self_proposal_blocked');
+      FirebaseCrashlytics.instance.setCustomKey('provider_self_proposal_blocked', true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يمكنك اقتراح سعر على طلبك.')),
+      );
+      return;
+    }
     final bookingType = (bookingDataForValidation['type'] ?? '').toString();
     final bookingAmount = (bookingDataForValidation['amount'] is num)
         ? (bookingDataForValidation['amount'] as num).toDouble()
@@ -815,6 +893,13 @@ class _BookingsScreenState extends State<BookingsScreen> {
       final snap = await tx.get(ref);
       final data = snap.data() ?? <String, dynamic>{};
       ownerId = (data['clientId'] ?? data['createdById'] ?? '').toString();
+      if (ownerId == uid) {
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'self-proposal-not-allowed',
+          message: 'لا يمكنك اقتراح سعر على طلبك.',
+        );
+      }
       final proposals = (data['priceProposals'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? <Map<String, dynamic>>[];
       final idx = proposals.indexWhere((p) => (p['outletId'] ?? '').toString() == uid);
       final uniqueOutletIds = proposals.map((p) => (p['outletId'] ?? '').toString()).where((id) => id.isNotEmpty).toSet();
@@ -859,14 +944,127 @@ class _BookingsScreenState extends State<BookingsScreen> {
           'clientId': ownerId,
           'outletId': uid,
           'actorId': uid,
+          'proposalId': uid,
           'price': price,
           'createdAt': FieldValue.serverTimestamp(),
         });
+        FirebaseCrashlytics.instance.setCustomKey('notification_event_type', 'booking_price_proposed');
+        FirebaseCrashlytics.instance.setCustomKey('actor_uid', uid);
+        FirebaseCrashlytics.instance.setCustomKey('recipient_uid', ownerId);
+        FirebaseCrashlytics.instance.setCustomKey('booking_id', bookingDocId);
         debugPrint('[ProposalFlow] booking price proposal event created bookingId=$bookingDocId recipientUid=$ownerId');
       } catch (e) {
         debugPrint('[ProposalFlow] booking price proposal event failed bookingId=$bookingDocId recipientUid=$ownerId error=$e');
+        FirebaseCrashlytics.instance.recordError(e, StackTrace.current, fatal: false);
       }
     }
+  }
+
+  Future<void> _acceptDirectlyAsRashid(String bookingDocId) async {
+    final uid = (widget.profile['uid'] ?? '').toString();
+    if (!_isRashidOutlet || uid.isEmpty) {
+      FirebaseCrashlytics.instance.log('rashid_direct_accept_blocked_not_allowed');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('هذه الميزة مخصصة لمنفذ الراشد فقط.')),
+      );
+      return;
+    }
+
+    FirebaseCrashlytics.instance.log('rashid_direct_accept_location_required');
+    FirebaseCrashlytics.instance.setCustomKey('rashid_direct_accept', true);
+    final outletPosition = await LocationGuardService.instance.requireCurrentLocation(
+      context,
+      title: 'مشاركة الموقع مطلوبة لقبول الطلب',
+      message: 'يجب مشاركة موقع المنفذ الحالي قبل قبول الطلب مباشرة.',
+      crashlyticsKey: 'rashid_direct_accept_location_required',
+    );
+    if (outletPosition == null) return;
+
+    final db = FirebaseFirestore.instance;
+    final bookingRef = db.collection('bookings').doc(bookingDocId);
+    final outletSnap = await db.collection('users').doc(uid).get();
+    final outletName = _outletDisplayName(outletSnap.data());
+    final outletLat = outletPosition.latitude;
+    final outletLng = outletPosition.longitude;
+
+    String ownerId = '';
+    double acceptedCommission = 0;
+    try {
+      await db.runTransaction((tx) async {
+        final bookingSnap = await tx.get(bookingRef);
+        final booking = bookingSnap.data() ?? <String, dynamic>{};
+        final status = (booking['status'] ?? '').toString();
+        ownerId = (booking['clientId'] ?? booking['createdById'] ?? '').toString();
+        if (ownerId == uid) {
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'self-accept-not-allowed',
+            message: 'لا يمكنك قبول طلبك الخاص.',
+          );
+        }
+        if (status != 'pending') {
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'invalid-state',
+            message: 'لا يمكن قبول هذا الطلب لأنه لم يعد بانتظار القبول.',
+          );
+        }
+
+        acceptedCommission = _acceptedCommissionFromBooking(booking);
+        tx.update(bookingRef, {
+          'outletId': uid,
+          'outletName': outletName,
+          'status': 'accepted',
+          'price': acceptedCommission,
+          'commission': acceptedCommission,
+          'acceptedAt': FieldValue.serverTimestamp(),
+          'acceptedDirectly': true,
+          'acceptedDirectlyBy': uid,
+          'acceptedDirectlyBySpecialOutlet': true,
+          'outletLat': outletLat,
+          'outletLng': outletLng,
+          'outletLocation': {'lat': outletLat, 'lng': outletLng},
+        });
+      });
+    } on FirebaseException catch (e) {
+      FirebaseCrashlytics.instance.recordError(e, StackTrace.current, fatal: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'تعذر قبول الطلب مباشرة.')),
+      );
+      return;
+    } catch (e, stackTrace) {
+      FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر قبول الطلب مباشرة.')),
+      );
+      return;
+    }
+
+    if (ownerId.isNotEmpty) {
+      try {
+        await db.collection('bookingEvents').add({
+          'type': 'booking_direct_accepted',
+          'bookingId': bookingDocId,
+          'clientId': ownerId,
+          'outletId': uid,
+          'acceptedOutletId': uid,
+          'actorId': uid,
+          'price': acceptedCommission,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e, stackTrace) {
+        debugPrint('[DirectAccept] booking direct accepted event failed bookingId=$bookingDocId ownerId=$ownerId error=$e');
+        FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      }
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم قبول الطلب مباشرة.')),
+    );
   }
 
   Future<void> _acceptProposal(String bookingDocId, String outletId, String price) async {
@@ -943,14 +1141,22 @@ class _BookingsScreenState extends State<BookingsScreen> {
         'actorId': clientId,
         'createdAt': FieldValue.serverTimestamp(),
       });
+      FirebaseCrashlytics.instance.setCustomKey('notification_event_type', 'booking_accepted');
+      FirebaseCrashlytics.instance.setCustomKey('actor_uid', clientId);
+      FirebaseCrashlytics.instance.setCustomKey('recipient_uid', outletId);
+      FirebaseCrashlytics.instance.setCustomKey('booking_id', bookingDocId);
+      FirebaseCrashlytics.instance.setCustomKey('accepted_proposal_provider_uid', outletId);
       debugPrint('[ProposalFlow] booking accepted event created bookingId=$bookingDocId outletId=$outletId');
     } catch (e) {
       debugPrint('[ProposalFlow] booking accepted event failed bookingId=$bookingDocId outletId=$outletId error=$e');
+      FirebaseCrashlytics.instance.recordError(e, StackTrace.current, fatal: false);
     }
     await _cancelOtherPendingOffersForOutlet(
       acceptedBookingDocId: bookingDocId,
       outletId: outletId,
     );
+    return;
+    // ignore: dead_code
     if (clientId.isNotEmpty) {
       await _createNotification(
         toUserId: clientId,
@@ -1087,6 +1293,16 @@ class _BookingsScreenState extends State<BookingsScreen> {
     return total / count;
   }
 
+  Future<_OutletOfferProfile> _fetchOutletOfferProfile(String outletId) async {
+    if (outletId.trim().isEmpty) return _OutletOfferProfile.placeholder();
+    final rating = await _fetchAverageRating(outletId);
+    return _OutletOfferProfile(
+      name: 'منفذ',
+      imageUrl: '',
+      rating: rating,
+    );
+  }
+
   Future<void> _cancelAcceptedBooking(String bookingDocId, String uid) async {
     final now = DateTime.now();
     final dayStart = DateTime(now.year, now.month, now.day);
@@ -1094,6 +1310,8 @@ class _BookingsScreenState extends State<BookingsScreen> {
     final bookingRef = db.collection('bookings').doc(bookingDocId);
     final dayKey = '${dayStart.year}-${dayStart.month}-${dayStart.day}';
     final dailyRef = db.collection('bookingCancellationDaily').doc('${uid}_$dayKey');
+    final rashidUnlimitedCancellation = _isRashidOutlet;
+    FirebaseCrashlytics.instance.setCustomKey('rashid_unlimited_cancellation', rashidUnlimitedCancellation);
 
     try {
       await db.runTransaction((tx) async {
@@ -1106,7 +1324,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
           throw FirebaseException(plugin: 'cloud_firestore', code: 'invalid-state', message: 'لا يمكن إلغاء هذا الطلب في حالته الحالية');
         }
 
-        if (started) {
+        if (started && !rashidUnlimitedCancellation) {
           final dailySnap = await tx.get(dailyRef);
           final currentCount = (dailySnap.data()?['count'] as num?)?.toInt() ?? 0;
           if (currentCount >= 3) {
@@ -1310,16 +1528,184 @@ class _TypeBadge extends StatelessWidget {
   }
 }
 
+class _OutletOfferProfile {
+  const _OutletOfferProfile({
+    required this.name,
+    required this.imageUrl,
+    required this.rating,
+  });
+
+  factory _OutletOfferProfile.placeholder() {
+    return const _OutletOfferProfile(
+      name: 'منفذ',
+      imageUrl: '',
+      rating: null,
+    );
+  }
+
+  final String name;
+  final String imageUrl;
+  final double? rating;
+}
+
+class _ProposalOfferCard extends StatelessWidget {
+  const _ProposalOfferCard({
+    required this.profile,
+    required this.price,
+    required this.distanceText,
+    required this.onAccept,
+  });
+
+  final _OutletOfferProfile profile;
+  final double price;
+  final String distanceText;
+  final VoidCallback onAccept;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = profile.imageUrl.isNotEmpty;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFFFDFAC)),
+        boxShadow: const [
+          BoxShadow(color: AppColors.shadow, blurRadius: 16, offset: Offset(0, 8)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: AppColors.primarySoft,
+                backgroundImage: hasImage ? NetworkImage(profile.imageUrl) : null,
+                child: hasImage
+                    ? null
+                    : const Icon(Icons.account_balance_wallet_rounded, color: AppColors.primaryDark, size: 28),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      profile.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.verified_rounded, size: 16, color: AppColors.success),
+                        const SizedBox(width: 4),
+                        const Text(
+                          'منفذ متاح للطلب',
+                          style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w700),
+                        ),
+                        if (profile.rating != null) ...[
+                          const SizedBox(width: 10),
+                          const Icon(Icons.star_rounded, size: 16, color: AppColors.accent),
+                          const SizedBox(width: 2),
+                          Text(
+                            profile.rating!.toStringAsFixed(1),
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFBF2),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFFFE2AE)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.payments_rounded, color: AppColors.accent, size: 28),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'العمولة المعروضة',
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        MoneyUtils.formatIqD(price),
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Icon(Icons.near_me_rounded, size: 18, color: AppColors.primaryDark),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'المسافة: $distanceText',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 48,
+            child: FilledButton.icon(
+              onPressed: onAccept,
+              icon: const Icon(Icons.check_circle_rounded),
+              label: const Text('قبول العرض'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FilterChip extends StatelessWidget {
   const _FilterChip({
     required this.label,
     required this.selected,
     required this.onTap,
+    this.badgeCount = 0,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -1333,14 +1719,51 @@ class _FilterChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: selected ? AppColors.primary : AppColors.border),
         ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: selected ? Colors.white : AppColors.textPrimary,
-            fontWeight: FontWeight.w800,
-            fontSize: 13,
-          ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? Colors.white : AppColors.textPrimary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            if (badgeCount > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: selected ? AppColors.accent : AppColors.primary,
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: const [
+                    BoxShadow(color: AppColors.shadow, blurRadius: 8, offset: Offset(0, 3)),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.notifications_active_rounded, color: Colors.white, size: 12),
+                    const SizedBox(width: 3),
+                    Text(
+                      badgeCount > 99 ? '99+' : '$badgeCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -1370,7 +1793,7 @@ class _StatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        status,
+        _label(status),
         style: TextStyle(
           color: color,
           fontSize: 12,
@@ -1378,5 +1801,24 @@ class _StatusBadge extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _label(String status) {
+    switch (status) {
+      case 'pending':
+        return 'بانتظار العروض';
+      case 'accepted':
+        return 'تم القبول';
+      case 'in_progress':
+        return 'قيد التنفيذ';
+      case 'awaiting_provider_code':
+        return 'بانتظار الرمز';
+      case 'completed':
+        return 'مكتمل';
+      case 'cancelled':
+        return 'ملغي';
+      default:
+        return status;
+    }
   }
 }

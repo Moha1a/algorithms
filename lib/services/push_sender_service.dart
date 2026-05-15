@@ -27,6 +27,7 @@ class PushSenderService {
     required String type,
     String bookingId = '',
     String actorId = '',
+    String dedupeKey = '',
   }) async {
     if (recipientUid.trim().isEmpty) return;
 
@@ -49,6 +50,7 @@ class PushSenderService {
           'type': type,
           'bookingId': bookingId,
           'actorId': actorId,
+          'dedupeKey': dedupeKey.isNotEmpty ? dedupeKey : '$type:$bookingId:$recipientUid:$actorId',
         }),
       );
 

@@ -8,14 +8,19 @@ function getDb(): FirebaseFirestore.Firestore {
 
 export async function runIdempotent(params: {
   dedupeKey: string;
+  metadata?: Record<string, unknown>;
   run: () => Promise<void>;
 }): Promise<boolean> {
-  const {dedupeKey, run} = params;
+  const {dedupeKey, metadata = {}, run} = params;
   const ref = getDb().collection('notificationLogs').doc(dedupeKey);
   const existing = await ref.get();
 
   if (existing.exists) {
-    logInfo('Idempotency: skip duplicate event', {dedupeKey});
+    logInfo('duplicate_notification_skipped', {
+      dedupeKey,
+      duplicate_notification_skipped: true,
+      ...metadata,
+    });
     return false;
   }
 
@@ -24,6 +29,7 @@ export async function runIdempotent(params: {
   await ref.set(
     {
       dedupeKey,
+      ...metadata,
       processedAt: admin.firestore.FieldValue.serverTimestamp(),
     },
     {merge: true}

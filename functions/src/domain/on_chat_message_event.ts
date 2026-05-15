@@ -35,7 +35,7 @@ export const onChatMessageEvent = onDocumentCreated(
     const booking = bookingSnap.data() ?? {};
     const clientId = clean(booking.clientId);
     const outletId = clean(booking.outletId);
-    const recipientUid = actorId === clientId ? outletId : clientId;
+    const recipientUid = actorId == clientId ? outletId : clientId;
     if (!recipientUid) {
       logWarn('onChatMessageEvent skipped: recipient not resolved', {
         bookingId,
@@ -46,15 +46,31 @@ export const onChatMessageEvent = onDocumentCreated(
       });
       return;
     }
+    if (recipientUid == actorId) {
+      logWarn('onChatMessageEvent skipped: actor and recipient are the same', {
+        bookingId,
+        messageId,
+        actorId,
+        recipientUid,
+      });
+      return;
+    }
 
-    const dedupeKey = `chat_message_event__${bookingId}__${messageId}`;
+    const dedupeKey = `message_created:${bookingId}:${messageId}:${recipientUid}`;
     await runIdempotent({
       dedupeKey,
+      metadata: {
+        push_event_type: 'chat_message_created',
+        push_dedupe_key: dedupeKey,
+        push_actor_uid: actorId,
+        push_recipient_uid: recipientUid,
+        push_booking_id: bookingId,
+      },
       run: async () => {
         const senderSnap = await getDb().collection('users').doc(actorId).get();
         const sender = senderSnap.data() ?? {};
         const senderName = clean(sender.fullName) || clean(sender.outletName) || 'رسالة جديدة';
-        const body = messageText || 'لديك رسالة جديدة.';
+        const body = messageText || 'لديك رسالة جديدة بخصوص الطلب.';
 
         await getDb().collection('notifications').add({
           toUserId: recipientUid,
@@ -71,22 +87,25 @@ export const onChatMessageEvent = onDocumentCreated(
           recipientUid,
           bookingId,
           actorId,
-          dedupeKey: `job__${bookingId}__${messageId}`,
+          dedupeKey,
           sourceEventId: `chat_message_${bookingId}_${messageId}`,
           screen: 'chat',
           notification: {
             title: senderName,
             body,
           },
-          data: {},
+          data: {dedupeKey},
         });
         await getDb().collection('notificationJobs').add(job);
 
         logInfo('onChatMessageEvent created notification + job', {
           bookingId,
           messageId,
-          actorId,
-          recipientUid,
+          push_event_type: 'chat_message_created',
+          push_dedupe_key: dedupeKey,
+          push_actor_uid: actorId,
+          push_recipient_uid: recipientUid,
+          push_booking_id: bookingId,
         });
       },
     });

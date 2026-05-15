@@ -25,6 +25,7 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   static const _adminPhone = '+9647733832043';
   static const _adminPassword = 'ALskQPwo0099@&';
+  static const _termsVersion = '2026-05-13';
 
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
@@ -36,6 +37,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLogin = true;
   bool _isLoading = false;
   bool _isNavigating = false;
+  bool _acceptedTerms = false;
   final String _selectedGovernorate = 'البصرة';
 
   @override
@@ -53,6 +55,7 @@ class _AuthScreenState extends State<AuthScreen> {
     final roleLabel = role == UserRole.outlet ? 'منفذ' : 'عميل';
     final roleValue = role == UserRole.outlet ? 'outlet' : 'client';
     final needOutletName = !_isLogin && role == UserRole.outlet;
+    final registrationTerms = _termsForRole(roleValue);
 
     return Scaffold(
       appBar: AppBar(title: Text(_isLogin ? 'تسجيل الدخول برقم الهاتف' : 'إنشاء حساب برقم الهاتف')),
@@ -70,6 +73,18 @@ class _AuthScreenState extends State<AuthScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(18, 8, 18, 20),
               children: [
+                Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.asset(
+                      'assets/images/monfathak_logo.png',
+                      width: 190,
+                      height: 76,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
@@ -173,6 +188,29 @@ class _AuthScreenState extends State<AuthScreen> {
                           return null;
                         },
                       ),
+                      if (!_isLogin) ...[
+                        const SizedBox(height: 16),
+                        _buildTermsCard(
+                          roleLabel: roleLabel,
+                          terms: registrationTerms,
+                        ),
+                        CheckboxListTile(
+                          value: _acceptedTerms,
+                          onChanged: _isLoading
+                              ? null
+                              : (value) => setState(() => _acceptedTerms = value ?? false),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text(
+                            'أوافق على الشروط والأحكام',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: const Text(
+                            'لا يمكن إكمال التسجيل قبل الموافقة عليها.',
+                            style: TextStyle(color: AppColors.textMuted),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 20),
                       SizedBox(
                         width: double.infinity,
@@ -223,6 +261,10 @@ class _AuthScreenState extends State<AuthScreen> {
     debugPrint('[LOGIN FLOW] button pressed');
     final formState = _formKey.currentState;
     if (formState == null || !formState.validate()) return;
+    if (!_isLogin && !_acceptedTerms) {
+      _showMessage('يرجى الموافقة على الشروط والأحكام لإكمال التسجيل.');
+      return;
+    }
     debugPrint('[LOGIN FLOW] input validated');
     debugPrint('[LOGIN FLOW] try start');
 
@@ -272,6 +314,9 @@ class _AuthScreenState extends State<AuthScreen> {
               governorate: _selectedGovernorate,
               outletName: _outletNameController.text,
               password: _passwordController.text,
+              acceptedTerms: _acceptedTerms,
+              termsVersion: _termsVersion,
+              acceptedTermsItems: _termsForRole(selectedRole),
             );
             if (!mounted) return;
             final isOutletRegistrationPending = !_isLogin &&
@@ -339,6 +384,9 @@ class _AuthScreenState extends State<AuthScreen> {
                   governorate: _selectedGovernorate,
                   outletName: _outletNameController.text,
                   password: _passwordController.text,
+                  acceptedTerms: _acceptedTerms,
+                  termsVersion: _termsVersion,
+                  acceptedTermsItems: _termsForRole(selectedRole),
                 ),
               ),
             );
@@ -509,5 +557,74 @@ class _AuthScreenState extends State<AuthScreen> {
       action();
       _isNavigating = false;
     });
+  }
+
+  List<String> _termsForRole(String role) {
+    if (role == 'outlet') {
+      return const [
+        'عمولة السحب لا تتجاوز 0.006 دينار لكل دينار واحد.',
+        'الالتزام بالموقع والتحقق قبل تأكيد العملية.',
+        'استلام وتسليم الأموال يكون داخل المنفذ حصراً.',
+        'منفذك هو الذي يتحمل استقطاعات البنك أو الشركة.',
+        'المنفذ مؤمن بشكل كامل بنظام مراقبة أمن.',
+      ];
+    }
+
+    return const [
+      'عمولة السحب لا تتجاوز 0.006 دينار لكل دينار واحد.',
+      'الالتزام بالموقع والتحقق من اسم المنفذ قبل تأكيد العملية.',
+      'استلام وتسليم الأموال يكون داخل المنفذ حصراً.',
+    ];
+  }
+
+  Widget _buildTermsCard({
+    required String roleLabel,
+    required List<String> terms,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'الشروط والأحكام الخاصة بـ $roleLabel',
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              color: AppColors.primaryDark,
+            ),
+          ),
+          const SizedBox(height: 10),
+          for (final term in terms) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsetsDirectional.only(top: 2),
+                  child: Icon(
+                    Icons.check_circle_outline_rounded,
+                    size: 18,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    term,
+                    style: const TextStyle(height: 1.45),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
   }
 }

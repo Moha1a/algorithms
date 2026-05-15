@@ -21,6 +21,9 @@ class OtpVerificationScreen extends StatefulWidget {
     this.governorate = 'البصرة',
     this.password = '',
     this.outletName,
+    this.acceptedTerms = false,
+    this.termsVersion = '',
+    this.acceptedTermsItems = const [],
     this.isPasswordResetFlow = false,
   });
 
@@ -34,6 +37,9 @@ class OtpVerificationScreen extends StatefulWidget {
   final String governorate;
   final String password;
   final String? outletName;
+  final bool acceptedTerms;
+  final String termsVersion;
+  final List<String> acceptedTermsItems;
   final bool isPasswordResetFlow;
 
   @override
@@ -137,6 +143,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         fullName: widget.fullName,
         governorate: widget.governorate,
         outletName: widget.outletName,
+        acceptedTerms: widget.acceptedTerms,
+        termsVersion: widget.termsVersion,
+        acceptedTermsItems: widget.acceptedTermsItems,
       );
       if (!mounted) return;
       final isOutletRegistrationPending = widget.isRegistration &&

@@ -31,7 +31,11 @@ export async function getActiveDeviceTokens(uid: string): Promise<DeviceTokenRec
     .filter((d) => d.token);
 
   if (devices.length > 0) {
-    logInfo('Device tokens loaded from devices', {uid: cleanUid, count: devices.length});
+    logInfo('Device tokens loaded from devices', {
+      uid: cleanUid,
+      count: devices.length,
+      push_tokens_before_dedupe: devices.length,
+    });
     return devices;
   }
 
@@ -41,7 +45,11 @@ export async function getActiveDeviceTokens(uid: string): Promise<DeviceTokenRec
     .filter((x) => x)
     .map((token, i) => ({deviceId: `legacy_${i}`, token, platform: 'legacy'}));
 
-  logInfo('Device tokens loaded from fcmTokens legacy', {uid: cleanUid, count: legacyTokens.length});
+  logInfo('Device tokens loaded from fcmTokens legacy', {
+    uid: cleanUid,
+    count: legacyTokens.length,
+    push_tokens_before_dedupe: legacyTokens.length,
+  });
   return legacyTokens;
 }
 

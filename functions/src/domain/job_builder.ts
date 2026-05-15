@@ -3,7 +3,9 @@ import * as admin from 'firebase-admin';
 export type NotificationJobType =
   | 'booking_price_proposed'
   | 'booking_accepted'
-  | 'chat_message_created';
+  | 'booking_direct_accepted'
+  | 'chat_message_created'
+  | 'booking_auto_cancelled_11h';
 
 export type NotificationJobPayload = {
   type: NotificationJobType;

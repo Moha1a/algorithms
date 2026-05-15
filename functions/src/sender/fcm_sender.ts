@@ -21,6 +21,7 @@ export async function sendNotificationJob(job: FirebaseFirestore.DocumentData): 
   const bookingId = String(job.data?.bookingId || job.bookingId || '');
   const actorId = String(job.data?.actorId || job.actorId || '');
   const screen = String(job.data?.screen || job.screen || '');
+  const dedupeKey = String(job.data?.dedupeKey || job.dedupeKey || '');
 
   if (!devices.length) {
     logInfo('FCM sender skipped: no active devices', {
@@ -50,7 +51,27 @@ export async function sendNotificationJob(job: FirebaseFirestore.DocumentData): 
     });
   });
 
-  const tokens = devices.map((d) => d.token);
+  const tokensBeforeDedupe = devices.length;
+  const uniqueDevices = Array.from(
+    new Map(devices.map((device) => [device.token, device])).values()
+  );
+  const tokens = uniqueDevices.map((d) => d.token);
+  const tokensAfterDedupe = tokens.length;
+  if (tokensAfterDedupe < tokensBeforeDedupe) {
+    logInfo('duplicate_notification_skipped', {
+      push_event_type: eventType,
+      push_recipient_uid: recipientUid,
+      duplicate_notification_skipped: true,
+      push_tokens_before_dedupe: tokensBeforeDedupe,
+      push_tokens_after_dedupe: tokensAfterDedupe,
+    });
+  }
+  logInfo('FCM sender deduped tokens', {
+    push_recipient_uid: recipientUid,
+    push_event_type: eventType,
+    push_tokens_before_dedupe: tokensBeforeDedupe,
+    push_tokens_after_dedupe: tokensAfterDedupe,
+  });
   const response = await admin.messaging().sendEachForMulticast({
     tokens,
     notification: {title, body},
@@ -59,6 +80,7 @@ export async function sendNotificationJob(job: FirebaseFirestore.DocumentData): 
       bookingId,
       screen,
       actorId,
+      dedupeKey,
     },
     android: {
       priority: 'high',
@@ -90,7 +112,7 @@ export async function sendNotificationJob(job: FirebaseFirestore.DocumentData): 
         push_event_type: eventType,
         push_send_success: true,
         tokenIndex: idx,
-        deviceId: devices[idx]?.deviceId || '',
+        deviceId: uniqueDevices[idx]?.deviceId || '',
         messageId: r.messageId || '',
       });
       return;
@@ -114,7 +136,7 @@ export async function sendNotificationJob(job: FirebaseFirestore.DocumentData): 
     });
 
     if (isInvalidTokenError(code)) {
-      cleanups.push(deleteDeviceById(recipientUid, devices[idx].deviceId));
+      cleanups.push(deleteDeviceById(recipientUid, uniqueDevices[idx].deviceId));
     }
   });
 

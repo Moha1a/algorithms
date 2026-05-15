@@ -191,6 +191,8 @@ class BookingMapDetailsScreen extends StatefulWidget {
 }
 
 class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
+  static const String _rashidOutletName = 'منفذ الراشد';
+
   final TextEditingController _completionCodeController = TextEditingController();
   Timer? _countdownTimer;
   int _codeSecondsLeft = 0;
@@ -202,6 +204,29 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
     _countdownTimer?.cancel();
     _completionCodeController.dispose();
     super.dispose();
+  }
+
+  String _normalizedName(Object? value) {
+    return (value ?? '').toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  Future<bool> _isRashidOutletUser(String uid) async {
+    if (uid.trim().isEmpty) return false;
+    try {
+      final snap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final data = snap.data();
+      final role = (data?['role'] ?? '').toString();
+      if (role != 'outlet') return false;
+      final target = _normalizedName(_rashidOutletName);
+      return [
+        data?['outletName'],
+        data?['fullName'],
+        data?['name'],
+      ].any((name) => _normalizedName(name) == target);
+    } catch (e, stackTrace) {
+      FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      return false;
+    }
   }
 
   @override
@@ -685,6 +710,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
     final isAfterAcceptance = status == 'accepted' || status == 'in_progress' || status == 'awaiting_provider_code';
     final db = FirebaseFirestore.instance;
     final bookingRef = db.collection('bookings').doc(widget.bookingDocId);
+    final rashidUnlimitedCancellation = await _isRashidOutletUser(uid);
+    FirebaseCrashlytics.instance.setCustomKey('rashid_unlimited_cancellation', rashidUnlimitedCancellation);
 
     if (!isAfterAcceptance) {
       await bookingRef.update({
@@ -716,9 +743,12 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
           return;
         }
 
-        final dailySnap = await tx.get(dailyRef);
-        final currentCount = (dailySnap.data()?['count'] as num?)?.toInt() ?? 0;
-        if (currentCount >= 3) {
+        var currentCount = 0;
+        if (!rashidUnlimitedCancellation) {
+          final dailySnap = await tx.get(dailyRef);
+          currentCount = (dailySnap.data()?['count'] as num?)?.toInt() ?? 0;
+        }
+        if (!rashidUnlimitedCancellation && currentCount >= 3) {
           throw FirebaseException(
             plugin: 'cloud_firestore',
             code: 'cancel-limit',
@@ -731,12 +761,14 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
           'cancelledAt': FieldValue.serverTimestamp(),
           'cancelledBy': uid,
         });
-        tx.set(dailyRef, {
-          'userId': uid,
-          'dayKey': dayKey,
-          'count': currentCount + 1,
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+        if (!rashidUnlimitedCancellation) {
+          tx.set(dailyRef, {
+            'userId': uid,
+            'dayKey': dayKey,
+            'count': currentCount + 1,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
       });
 
       if (!mounted) return;

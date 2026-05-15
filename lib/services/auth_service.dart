@@ -209,13 +209,31 @@ class AuthService {
     required String fullName,
     required String governorate,
     String? outletName,
+    required bool acceptedTerms,
+    required String termsVersion,
+    required List<String> acceptedTermsItems,
   }) async {
     debugPrint('[LOGIN FLOW] start');
     try {
       final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
       final trimmedPassword = password.trim();
+      final normalizedTermsVersion = termsVersion.trim();
+      final normalizedTermsItems = acceptedTermsItems
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty)
+          .toList(growable: false);
       if (trimmedPassword.length < 6) {
         throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      }
+
+      if (isRegistration &&
+          (!acceptedTerms ||
+              normalizedTermsVersion.isEmpty ||
+              normalizedTermsItems.isEmpty)) {
+        throw FirebaseAuthException(
+          code: 'terms-not-accepted',
+          message: 'يرجى الموافقة على الشروط والأحكام لإكمال التسجيل.',
+        );
       }
 
       final userCredential = await _auth.signInWithCredential(credential);
@@ -311,6 +329,11 @@ class AuthService {
         'governorate': governorate.trim(),
         'phoneNumber': normalizedPhone,
         'passwordHash': passwordHash,
+        'termsAccepted': acceptedTerms,
+        'termsAcceptedAt': FieldValue.serverTimestamp(),
+        'termsVersion': normalizedTermsVersion,
+        'termsAcceptedRole': role,
+        'termsAcceptedItems': normalizedTermsItems,
         'createdAt': FieldValue.serverTimestamp(),
       };
 

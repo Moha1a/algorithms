@@ -18,8 +18,10 @@ class NotificationRouter {
     // Safe routing: if target screen is unavailable, always fallback.
     switch (type) {
       case 'booking_accepted':
+      case 'booking_direct_accepted':
       case 'booking_price_proposed':
       case 'chat_message_created':
+      case 'booking_auto_cancelled_11h':
         nav.push(
           MaterialPageRoute(
             builder: (_) => NotificationDebugScreen(

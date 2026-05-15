@@ -11,6 +11,7 @@ type PushPayload = {
   type?: string;
   bookingId?: string;
   actorId?: string;
+  dedupeKey?: string;
 };
 
 function applyCors(req: {headers: Record<string, unknown>}, res: {set: (name: string, value: string) => void}): void {
@@ -51,6 +52,7 @@ export const sendPushNotification = onRequest({region: 'us-central1', invoker: '
     const type = String(payload.type || '').trim();
     const bookingId = String(payload.bookingId || '').trim();
     const actorId = String(payload.actorId || '').trim();
+    const dedupeKey = String(payload.dedupeKey || `${type}:${bookingId}:${recipientUid}:${actorId}`).trim();
     if (!recipientUid || !title || !body) {
       res.status(400).json({ok: false, error: 'Missing recipientUid/title/body'});
       return;
@@ -64,7 +66,7 @@ export const sendPushNotification = onRequest({region: 'us-central1', invoker: '
       eventCategory:
         type === 'price_proposal' || type === 'price_proposal_updated'
           ? 'proposal'
-          : type === 'order_accepted' || type === 'booking_accepted'
+          : type === 'order_accepted' || type === 'booking_accepted' || type === 'booking_direct_accepted'
             ? 'acceptance'
             : type === 'new_message'
               ? 'message'
@@ -82,13 +84,26 @@ export const sendPushNotification = onRequest({region: 'us-central1', invoker: '
     });
     const tokens = devices.map((device) => device.token);
     const tokensCount = tokens.length;
+    const tokensBeforeDedupe = loadedDevices.length;
+    const tokensAfterDedupe = tokensCount;
 
     logger.info('sendPushNotification tokens found', {
       push_recipient_uid: recipientUid,
       push_event_type: type,
       push_tokens_found: tokensCount,
+      push_tokens_before_dedupe: tokensBeforeDedupe,
+      push_tokens_after_dedupe: tokensAfterDedupe,
       bookingId,
     });
+    if (tokensAfterDedupe < tokensBeforeDedupe) {
+      logger.info('duplicate_notification_skipped', {
+        push_recipient_uid: recipientUid,
+        push_event_type: type,
+        duplicate_notification_skipped: true,
+        push_tokens_before_dedupe: tokensBeforeDedupe,
+        push_tokens_after_dedupe: tokensAfterDedupe,
+      });
+    }
 
     if (!tokensCount) {
       logger.warn('sendPushNotification skipped: no tokens', {
@@ -115,7 +130,7 @@ export const sendPushNotification = onRequest({region: 'us-central1', invoker: '
     const result = await admin.messaging().sendEachForMulticast({
       tokens,
       notification: {title, body},
-      data: {type, bookingId, actorId},
+      data: {type, bookingId, actorId, dedupeKey},
       android: {
         priority: 'high',
         notification: {
