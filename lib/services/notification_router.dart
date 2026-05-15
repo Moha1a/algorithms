@@ -19,6 +19,7 @@ class NotificationRouter {
     switch (type) {
       case 'booking_accepted':
       case 'booking_direct_accepted':
+      case 'booking_new_request_created':
       case 'booking_price_proposed':
       case 'chat_message_created':
       case 'booking_auto_cancelled_11h':

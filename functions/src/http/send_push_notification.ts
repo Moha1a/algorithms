@@ -66,6 +66,8 @@ export const sendPushNotification = onRequest({region: 'us-central1', invoker: '
       eventCategory:
         type === 'price_proposal' || type === 'price_proposal_updated'
           ? 'proposal'
+          : type === 'booking_new_request_created'
+            ? 'new_request'
           : type === 'order_accepted' || type === 'booking_accepted' || type === 'booking_direct_accepted'
             ? 'acceptance'
             : type === 'new_message'

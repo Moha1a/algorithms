@@ -4,6 +4,7 @@ export type NotificationJobType =
   | 'booking_price_proposed'
   | 'booking_accepted'
   | 'booking_direct_accepted'
+  | 'booking_new_request_created'
   | 'chat_message_created'
   | 'booking_auto_cancelled_11h';
 
