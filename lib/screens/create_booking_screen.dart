@@ -23,6 +23,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   static const _minCommissionRate = 0.003;
   static const _maxCommissionRate = 0.006;
   static const _suggestedRate = 0.005;
+  static const _minimumAmount = 1000.0;
+  static const _minimumCommission = 250.0;
   static const _cardBank = 'مصرف الرافدين';
 
   final _formKey = GlobalKey<FormState>();
@@ -39,15 +41,19 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     super.dispose();
   }
 
+  double _withMinimumCommission(double value) {
+    return value < _minimumCommission ? _minimumCommission : value;
+  }
+
   @override
   Widget build(BuildContext context) {
     final role = (widget.profile['role'] ?? 'client').toString();
     final amount = _parseMoney(_amountController.text) ?? 0;
     final price = _parseMoney(_priceController.text) ?? 0;
     final isDischarge = _type == 'discharge';
-    final minAllowedCommission = amount * _minCommissionRate;
-    final maxAllowedCommission = amount * _maxCommissionRate;
-    final suggestedPrice = (amount * _suggestedRate) < 250 ? 250.0 : (amount * _suggestedRate);
+    final minAllowedCommission = amount > 0 ? _withMinimumCommission(amount * _minCommissionRate) : 0.0;
+    final maxAllowedCommission = amount > 0 ? _withMinimumCommission(amount * _maxCommissionRate) : 0.0;
+    final suggestedPrice = amount > 0 ? _withMinimumCommission(amount * _suggestedRate) : 0.0;
 
     final typeItems = <DropdownMenuItem<String>>[
       const DropdownMenuItem(value: 'withdraw', child: Text('سحب من بطاقتك')),
@@ -85,6 +91,23 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                     prefixIcon: Icon(Icons.account_balance_rounded),
                   ),
                 ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _amountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'المبلغ'),
+                  onChanged: (_) => setState(() {}),
+                  validator: (value) {
+                    final parsed = _parseMoney(value ?? '');
+                    if (parsed == null || parsed <= 0) {
+                      return 'يرجى إدخال مبلغ صحيح';
+                    }
+                    if (parsed < _minimumAmount) {
+                      return 'أقل مبلغ مسموح هو ${MoneyUtils.iqdWithWords(_minimumAmount)}';
+                    }
+                    return null;
+                  },
+                ),
                 if (amount > 0 && !isDischarge)
                   Container(
                     margin: const EdgeInsets.only(top: 12),
@@ -99,20 +122,6 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
-                const SizedBox(height: 14),
-                TextFormField(
-                  controller: _amountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'المبلغ'),
-                  onChanged: (_) => setState(() {}),
-                  validator: (value) {
-                    final parsed = _parseMoney(value ?? '');
-                    if (parsed == null || parsed <= 0) {
-                      return 'يرجى إدخال مبلغ صحيح';
-                    }
-                    return null;
-                  },
-                ),
                 if (amount > 0 && !isDischarge)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
@@ -137,10 +146,13 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                     if (parsed == null || parsed <= 0) {
                       return 'يرجى إدخال عمولة صحيحة';
                     }
-                    if (!isDischarge && amount > 0 && parsed < amount * _minCommissionRate) {
+                    if (parsed < _minimumCommission) {
+                      return 'أقل عمولة مسموحة هي ${MoneyUtils.iqdWithWords(_minimumCommission)}';
+                    }
+                    if (!isDischarge && amount > 0 && parsed < minAllowedCommission) {
                       return 'العمولة أقل من الحد الأدنى المسموح';
                     }
-                    if (!isDischarge && amount > 0 && parsed > amount * _maxCommissionRate) {
+                    if (!isDischarge && amount > 0 && parsed > maxAllowedCommission) {
                       return 'العمولة أعلى من الحد الأعلى المسموح';
                     }
                     return null;
@@ -228,9 +240,24 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     final price = _parseMoney(_priceController.text) ?? 0;
     final commission = price;
 
-    final minAllowed = amount * _minCommissionRate;
-    final maxAllowed = amount * _maxCommissionRate;
+    final minAllowed = _withMinimumCommission(amount * _minCommissionRate);
+    final maxAllowed = _withMinimumCommission(amount * _maxCommissionRate);
 
+    if (amount < _minimumAmount) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('أقل مبلغ مسموح هو ${MoneyUtils.iqdWithWords(_minimumAmount)}.')),
+      );
+      if (mounted) setState(() => _saving = false);
+      return;
+    }
+
+    if (commission + 0.0001 < _minimumCommission) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('أقل عمولة مسموحة هي ${MoneyUtils.iqdWithWords(_minimumCommission)}.')),
+      );
+      if (mounted) setState(() => _saving = false);
+      return;
+    }
     if (_type != 'discharge' && commission + 0.0001 < minAllowed) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('العمولة أقل من الحد الأدنى المسموح وهو ${MoneyUtils.iqdWithWords(minAllowed)}.')),
