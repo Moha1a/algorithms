@@ -25,6 +25,23 @@ class AuthService {
   static const _testClientEmail = 'test.client@monfathak.local';
   static const _testOutletEmail = 'test.outlet@monfathak.local';
   static const _testPassword = 'TestAccount#2026';
+  static const appReviewPhone = '1111112222';
+  static const appReviewPassword = 'AppleReview#2026!Mf';
+  static const _appReviewNormalizedPhone = '+9641111112222';
+  static const _appReviewClientEmail = 'app.review.client@monfathak.local';
+  static const _appReviewOutletEmail = 'app.review.outlet@monfathak.local';
+
+  static bool isAppReviewPhoneInput(String phoneNumber) {
+    final digits = phoneNumber.replaceAll(RegExp(r'\D'), '');
+    return digits == appReviewPhone || IraqiPhoneUtils.normalize(phoneNumber) == _appReviewNormalizedPhone;
+  }
+
+  static bool isAppReviewCredentials({
+    required String phoneNumber,
+    required String password,
+  }) {
+    return isAppReviewPhoneInput(phoneNumber) && password.trim() == appReviewPassword;
+  }
 
   String _hashPassword(String password) {
     return sha256.convert(utf8.encode(password.trim())).toString();
@@ -471,6 +488,63 @@ class AuthService {
       'updatedAt': FieldValue.serverTimestamp(),
       'createdAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    await _safeRegisterDevice();
+    final fresh = await _firestore.collection('users').doc(uid).get();
+    return fresh.data()!;
+  }
+
+  Future<Map<String, dynamic>> loginAsAppReviewAccount({
+    required String role,
+    required String phoneNumber,
+    required String password,
+  }) async {
+    if (!isAppReviewCredentials(phoneNumber: phoneNumber, password: password)) {
+      throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
+    }
+
+    final isOutlet = role == 'outlet';
+    final email = isOutlet ? _appReviewOutletEmail : _appReviewClientEmail;
+
+    try {
+      await _auth.signInWithEmailAndPassword(email: email, password: appReviewPassword);
+    } on FirebaseAuthException catch (e) {
+      if (e.code != 'user-not-found' && e.code != 'invalid-credential') rethrow;
+      await _auth.createUserWithEmailAndPassword(email: email, password: appReviewPassword);
+    }
+
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر فتح حساب المراجعة.');
+    }
+
+    final profile = <String, dynamic>{
+      'uid': uid,
+      'fullName': isOutlet ? 'منفذ مراجعة Apple' : 'عميل مراجعة Apple',
+      'role': role,
+      'governorate': 'بغداد',
+      'phoneNumber': _appReviewNormalizedPhone,
+      'passwordHash': _hashPassword(appReviewPassword),
+      'termsAccepted': true,
+      'termsAcceptedAt': FieldValue.serverTimestamp(),
+      'termsVersion': 'app_review',
+      'termsAcceptedRole': role,
+      'isTestAccount': true,
+      'isAppReviewAccount': true,
+      'updatedAt': FieldValue.serverTimestamp(),
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+
+    if (isOutlet) {
+      profile.addAll({
+        'outletName': 'منفذ مراجعة Apple',
+        'approvalStatus': 'approved',
+        'approvalDecisionAt': FieldValue.serverTimestamp(),
+        'approvedBy': 'app_review_seed',
+      });
+    }
+
+    await _firestore.collection('users').doc(uid).set(profile, SetOptions(merge: true));
 
     await _safeRegisterDevice();
     final fresh = await _firestore.collection('users').doc(uid).get();

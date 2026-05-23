@@ -171,7 +171,10 @@ class _AuthScreenState extends State<AuthScreen> {
                                 labelText: 'رقم الهاتف',
                                 hintText: '07xxxxxxxxx أو 7xxxxxxxxx',
                               ),
-                              validator: (v) => IraqiPhoneUtils.validate(v ?? ''),
+                              validator: (v) {
+                                if (_isLogin && AuthService.isAppReviewPhoneInput(v ?? '')) return null;
+                                return IraqiPhoneUtils.validate(v ?? '');
+                              },
                             ),
                           ),
                         ],
@@ -275,6 +278,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
     final normalizedPhone = IraqiPhoneUtils.normalize(_phoneController.text);
     debugPrint('[LOGIN INPUT] rawPhone=${_phoneController.text} countryCode=+964 normalizedPhone=$normalizedPhone role=$selectedRole');
+    final isAppReviewLogin = _isLogin &&
+        AuthService.isAppReviewCredentials(
+          phoneNumber: _phoneController.text,
+          password: _passwordController.text,
+        );
     final isAdminOutletLogin = _isLogin &&
         selectedRole == 'outlet' &&
         normalizedPhone == _adminPhone &&
@@ -291,6 +299,17 @@ class _AuthScreenState extends State<AuthScreen> {
     var flowHandled = false;
 
     try {
+      if (isAppReviewLogin) {
+        final profile = await _authService.loginAsAppReviewAccount(
+          role: selectedRole,
+          phoneNumber: _phoneController.text,
+          password: _passwordController.text,
+        );
+        if (!mounted) return;
+        _openPostAuthScreen(profile);
+        return;
+      }
+
       if (_isLogin) {
         await _authService.assertLoginPasswordBeforeOtp(
           phoneNumber: normalizedPhone,
