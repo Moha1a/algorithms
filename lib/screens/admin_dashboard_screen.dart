@@ -26,7 +26,7 @@ class AdminDashboardScreen extends StatelessWidget {
             tabs: [
               Tab(text: 'المنافذ'),
               Tab(text: 'العملاء'),
-              Tab(text: 'الرحلات'),
+              Tab(text: 'الطلبات'),
               Tab(text: 'المحادثات'),
             ],
           ),
@@ -302,7 +302,7 @@ class _TripsAdminTabState extends State<_TripsAdminTab> {
         Padding(
           padding: const EdgeInsets.all(12),
           child: TextField(
-            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'بحث برقم الرحلة أو النوع أو الحالة'),
+            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'بحث برقم الطلب أو النوع أو الحالة'),
             onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
           ),
         ),
@@ -326,7 +326,7 @@ class _TripsAdminTabState extends State<_TripsAdminTab> {
                   final id = docs[i].id;
                   return Card(
                     child: ListTile(
-                      title: Text('رحلة ${(d['bookingId'] ?? id).toString()}'),
+                      title: Text('طلب ${(d['bookingId'] ?? id).toString()}'),
                       subtitle: Text('الحالة: ${(d['status'] ?? '').toString()} • النوع: ${(d['type'] ?? '').toString()}'),
                       trailing: PopupMenuButton<String>(
                         onSelected: (v) async {
@@ -359,7 +359,7 @@ class _TripsAdminTabState extends State<_TripsAdminTab> {
                           }
                         },
                         itemBuilder: (_) => const [
-                          PopupMenuItem(value: 'cancel', child: Text('إلغاء الرحلة')),
+                          PopupMenuItem(value: 'cancel', child: Text('إلغاء الطلب')),
                           PopupMenuItem(value: 'chat_client', child: Text('مراسلة العميل')),
                           PopupMenuItem(value: 'chat_outlet', child: Text('مراسلة المنفذ')),
                         ],

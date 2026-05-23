@@ -94,7 +94,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                 const SizedBox(height: 14),
                 TextFormField(
                   controller: _amountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: const [MoneyInputFormatter()],
                   decoration: const InputDecoration(labelText: 'المبلغ'),
                   onChanged: (_) => setState(() {}),
                   validator: (value) {
@@ -138,7 +139,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                   ),
                 TextFormField(
                   controller: _priceController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: const [MoneyInputFormatter()],
                   decoration: const InputDecoration(labelText: 'العمولة'),
                   onChanged: (_) => setState(() {}),
                   validator: (value) {
@@ -215,13 +217,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   }
 
   double? _parseMoney(String input) {
-    var value = input.trim();
+    var value = MoneyUtils.normalizeDigitsOnly(input);
     if (value.isEmpty) return null;
-    const arabicDigits = {'٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'};
-    arabicDigits.forEach((key, mapped) {
-      value = value.replaceAll(key, mapped);
-    });
-    value = value.replaceAll(',', '').replaceAll(' ', '');
     return double.tryParse(value);
   }
 

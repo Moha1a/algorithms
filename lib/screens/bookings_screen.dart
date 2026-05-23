@@ -128,11 +128,11 @@ class _BookingsScreenState extends State<BookingsScreen> {
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: _pendingRequestsBadgeStream('client'),
                 builder: (context, clientBadgeSnap) {
-                  final clientPending = clientBadgeSnap.data?.docs.length ?? 0;
+                  final clientPending = _pendingCountFromSnapshot(clientBadgeSnap, uid);
                   return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                     stream: _pendingRequestsBadgeStream('outlet'),
                     builder: (context, outletBadgeSnap) {
-                      final outletPending = outletBadgeSnap.data?.docs.length ?? 0;
+                      final outletPending = _pendingCountFromSnapshot(outletBadgeSnap, uid);
                       return Row(
                         children: [
                           Expanded(
@@ -162,27 +162,36 @@ class _BookingsScreenState extends State<BookingsScreen> {
           if (role == 'outlet' && !widget.forOwnRequests)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _TypeBadge(
-                    label: 'سحب',
-                    selected: _outletType == OutletTypeFilter.withdraw,
-                    onTap: () => setState(() => _outletType = OutletTypeFilter.withdraw),
-                  ),
-                  _TypeBadge(
-                    label: 'شحن',
-                    selected: _outletType == OutletTypeFilter.deposit,
-                    onTap: () => setState(() => _outletType = OutletTypeFilter.deposit),
-                  ),
-                  if (effectiveOutletTab == OutletRequestTab.outletRequests)
-                    _TypeBadge(
-                      label: 'تفريغ',
-                      selected: _outletType == OutletTypeFilter.discharge,
-                      onTap: () => setState(() => _outletType = OutletTypeFilter.discharge),
-                    ),
-                ],
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: _pendingRequestsBadgeStream(_requestOwnerRoleFor(effectiveOutletTab)),
+                builder: (context, typeBadgeSnap) {
+                  final typeCounts = _pendingTypeCountsFromSnapshot(typeBadgeSnap, uid);
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _TypeBadge(
+                        label: 'سحب',
+                        selected: _outletType == OutletTypeFilter.withdraw,
+                        badgeCount: typeCounts['withdraw'] ?? 0,
+                        onTap: () => setState(() => _outletType = OutletTypeFilter.withdraw),
+                      ),
+                      _TypeBadge(
+                        label: 'شحن',
+                        selected: _outletType == OutletTypeFilter.deposit,
+                        badgeCount: typeCounts['deposit'] ?? 0,
+                        onTap: () => setState(() => _outletType = OutletTypeFilter.deposit),
+                      ),
+                      if (effectiveOutletTab == OutletRequestTab.outletRequests)
+                        _TypeBadge(
+                          label: 'تفريغ',
+                          selected: _outletType == OutletTypeFilter.discharge,
+                          badgeCount: typeCounts['discharge'] ?? 0,
+                          onTap: () => setState(() => _outletType = OutletTypeFilter.discharge),
+                        ),
+                    ],
+                  );
+                },
               ),
             ),
           if (widget.showHistoryTabs)
@@ -260,7 +269,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final data = filtered[index].data();
-                    final bookingId = (data['bookingId'] ?? filtered[index].id).toString();
                     final status = (data['status'] ?? '').toString();
                     final type = (data['type'] ?? '').toString();
                     final amount = (data['amount'] ?? '-').toString();
@@ -425,7 +433,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
       return base.where('createdById', isEqualTo: uid);
     }
     if (role == 'outlet') {
-      final requestOwnerRole = effectiveOutletTab == OutletRequestTab.clientRequests ? 'client' : 'outlet';
+      final requestOwnerRole = _requestOwnerRoleFor(effectiveOutletTab);
       final typeValue = switch (_outletType) {
         OutletTypeFilter.withdraw => 'withdraw',
         OutletTypeFilter.deposit => 'deposit',
@@ -442,6 +450,36 @@ class _BookingsScreenState extends State<BookingsScreen> {
         .where('status', isEqualTo: 'pending')
         .where('requestOwnerRole', isEqualTo: requestOwnerRole)
         .snapshots();
+  }
+
+  String _requestOwnerRoleFor(OutletRequestTab tab) {
+    return tab == OutletRequestTab.clientRequests ? 'client' : 'outlet';
+  }
+
+  int _pendingCountFromSnapshot(AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snapshot, String uid) {
+    final docs = snapshot.data?.docs ?? const [];
+    return docs.where((doc) {
+      final data = doc.data();
+      final ownerId = (data['createdById'] ?? data['clientId'] ?? '').toString();
+      return ownerId != uid;
+    }).length;
+  }
+
+  Map<String, int> _pendingTypeCountsFromSnapshot(
+    AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snapshot,
+    String uid,
+  ) {
+    final counts = <String, int>{};
+    final docs = snapshot.data?.docs ?? const [];
+    for (final doc in docs) {
+      final data = doc.data();
+      final ownerId = (data['createdById'] ?? data['clientId'] ?? '').toString();
+      if (ownerId == uid) continue;
+      final type = (data['type'] ?? '').toString();
+      if (type.isEmpty) continue;
+      counts[type] = (counts[type] ?? 0) + 1;
+    }
+    return counts;
   }
 
   bool _matchesFilter(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
@@ -560,6 +598,8 @@ class _BookingsScreenState extends State<BookingsScreen> {
         return 'تم الإلغاء تلقائيًا لعدم الضغط على "أنا وصلت" خلال 3 ساعات من القبول.';
       case 'auto_cancel_no_completion_within_1h':
         return 'تم الإلغاء تلقائيًا لعدم تأكيد الإكمال خلال ساعة من تسجيل الوصول.';
+      case 'auto_timeout_14_hours':
+        return 'تم إلغاء الطلب تلقائياً لأنه لم يكتمل خلال 14 ساعة.';
       default:
         return reason;
     }
@@ -638,7 +678,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
             );
           },
           icon: const Icon(Icons.map_rounded),
-          label: const Text('متابعة الرحلة على الخريطة'),
+          label: const Text('متابعة الطلب على الخريطة'),
         ),
       );
       widgets.add(
@@ -656,13 +696,13 @@ class _BookingsScreenState extends State<BookingsScreen> {
                 builder: (_) => SupportChatScreen(
                   threadPath: 'trip_support/$bookingId/messages',
                   currentUserId: uid,
-                  title: 'دعم الرحلة',
+                  title: 'دعم الطلب',
                 ),
               ),
             );
           },
           icon: const Icon(Icons.support_agent_rounded),
-          label: const Text('دعم الرحلة'),
+          label: const Text('دعم الطلب'),
         ),
       );
     }
@@ -789,7 +829,8 @@ class _BookingsScreenState extends State<BookingsScreen> {
         title: const Text('اقتراح سعر'),
         content: TextField(
           controller: ctrl,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: TextInputType.number,
+          inputFormatters: const [MoneyInputFormatter()],
           decoration: const InputDecoration(labelText: 'السعر المقترح'),
         ),
         actions: [
@@ -799,7 +840,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
       ),
     );
     if (ok != true) return;
-    final price = double.tryParse(ctrl.text.trim());
+    final price = double.tryParse(MoneyUtils.normalizeDigitsOnly(ctrl.text));
     if (price == null || price <= 0) return;
 
 
@@ -1163,7 +1204,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
         type: 'booking_accepted',
         bookingId: bookingDocId,
         title: 'تم قبول الطلب',
-        body: 'أصبح الطلب نشطًا ويمكن متابعة الرحلة',
+        body: 'أصبح الطلب نشطًا ويمكن متابعته',
       );
     }
   }
@@ -1501,11 +1542,13 @@ class _TypeBadge extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.badgeCount = 0,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -1519,9 +1562,28 @@ class _TypeBadge extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: selected ? AppColors.primary : AppColors.border),
         ),
-        child: Text(
-          label,
-          style: TextStyle(color: selected ? AppColors.primaryDark : AppColors.textMuted, fontWeight: FontWeight.w700),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(color: selected ? AppColors.primaryDark : AppColors.textMuted, fontWeight: FontWeight.w700),
+            ),
+            if (badgeCount > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: selected ? AppColors.primary : const Color(0xFFDC2626),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  badgeCount > 99 ? '99+' : '$badgeCount',
+                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );

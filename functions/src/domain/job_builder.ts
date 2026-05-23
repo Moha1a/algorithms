@@ -6,7 +6,8 @@ export type NotificationJobType =
   | 'booking_direct_accepted'
   | 'booking_new_request_created'
   | 'chat_message_created'
-  | 'booking_auto_cancelled_11h';
+  | 'booking_auto_cancelled_11h'
+  | 'booking_auto_cancelled_14h';
 
 export type NotificationJobPayload = {
   type: NotificationJobType;

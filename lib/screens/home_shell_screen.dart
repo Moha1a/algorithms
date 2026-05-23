@@ -44,6 +44,39 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     HomeShellScreen.tabRequest.value = null;
   }
 
+  Stream<QuerySnapshot<Map<String, dynamic>>> _pendingRequestsStream(String requestOwnerRole) {
+    return FirebaseFirestore.instance
+        .collection('bookings')
+        .where('status', isEqualTo: 'pending')
+        .where('requestOwnerRole', isEqualTo: requestOwnerRole)
+        .snapshots();
+  }
+
+  int _pendingCount(AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snapshot, String uid) {
+    final docs = snapshot.data?.docs ?? const [];
+    return docs.where((doc) {
+      final data = doc.data();
+      final ownerId = (data['createdById'] ?? data['clientId'] ?? '').toString();
+      return ownerId != uid;
+    }).length;
+  }
+
+  Widget _buildHomeScaffold({
+    required List<Widget> pages,
+    required List<NavigationDestination> destinations,
+  }) {
+    if (_index >= pages.length) _index = 0;
+
+    return Scaffold(
+      body: pages[_index],
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _index,
+        onDestinationSelected: (v) => setState(() => _index = v),
+        destinations: destinations,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final role = (widget.profile['role'] ?? '').toString();
@@ -104,33 +137,89 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
       builder: (context, snap) {
         final hasActiveMap = (snap.data?.docs ?? const []).isNotEmpty;
 
-        final destinations = isOutlet
-            ? [
-                const NavigationDestination(icon: Icon(Icons.list_alt_rounded), label: 'الطلبات'),
-                const NavigationDestination(icon: Icon(Icons.groups_rounded), label: 'العملاء'),
-                const NavigationDestination(icon: Icon(Icons.store_mall_directory_rounded), label: 'المنافذ'),
-                NavigationDestination(icon: _MapNavIcon(active: hasActiveMap && _index != mapIndex), label: 'الخريطة'),
-                const NavigationDestination(icon: Icon(Icons.notifications_active_rounded), label: 'الإشعارات'),
-                const NavigationDestination(icon: Icon(Icons.person_rounded), label: 'الحساب'),
-              ]
-            : [
-                const NavigationDestination(icon: Icon(Icons.list_alt_rounded), label: 'الطلبات'),
-                NavigationDestination(icon: _MapNavIcon(active: hasActiveMap && _index != mapIndex), label: 'الخريطة'),
-                const NavigationDestination(icon: Icon(Icons.notifications_active_rounded), label: 'الإشعارات'),
-                const NavigationDestination(icon: Icon(Icons.person_rounded), label: 'الحساب'),
-              ];
+        if (!isOutlet) {
+          return _buildHomeScaffold(
+            pages: pages,
+            destinations: [
+              const NavigationDestination(icon: Icon(Icons.list_alt_rounded), label: 'الطلبات'),
+              NavigationDestination(icon: _MapNavIcon(active: hasActiveMap && _index != mapIndex), label: 'الخريطة'),
+              const NavigationDestination(icon: Icon(Icons.notifications_active_rounded), label: 'الإشعارات'),
+              const NavigationDestination(icon: Icon(Icons.person_rounded), label: 'الحساب'),
+            ],
+          );
+        }
 
-        if (_index >= pages.length) _index = 0;
-
-        return Scaffold(
-          body: pages[_index],
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _index,
-            onDestinationSelected: (v) => setState(() => _index = v),
-            destinations: destinations,
-          ),
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: _pendingRequestsStream('client'),
+          builder: (context, clientRequestsSnap) {
+            final clientPendingCount = _pendingCount(clientRequestsSnap, uid);
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _pendingRequestsStream('outlet'),
+              builder: (context, outletRequestsSnap) {
+                final outletPendingCount = _pendingCount(outletRequestsSnap, uid);
+                return _buildHomeScaffold(
+                  pages: pages,
+                  destinations: [
+                    const NavigationDestination(icon: Icon(Icons.list_alt_rounded), label: 'الطلبات'),
+                    NavigationDestination(
+                      icon: _BadgeNavIcon(icon: Icons.groups_rounded, count: clientPendingCount),
+                      label: 'العملاء',
+                    ),
+                    NavigationDestination(
+                      icon: _BadgeNavIcon(icon: Icons.store_mall_directory_rounded, count: outletPendingCount),
+                      label: 'المنافذ',
+                    ),
+                    NavigationDestination(icon: _MapNavIcon(active: hasActiveMap && _index != mapIndex), label: 'الخريطة'),
+                    const NavigationDestination(icon: Icon(Icons.notifications_active_rounded), label: 'الإشعارات'),
+                    const NavigationDestination(icon: Icon(Icons.person_rounded), label: 'الحساب'),
+                  ],
+                );
+              },
+            );
+          },
         );
       },
+    );
+  }
+}
+
+class _BadgeNavIcon extends StatelessWidget {
+  const _BadgeNavIcon({required this.icon, required this.count});
+
+  final IconData icon;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(icon),
+        if (count > 0)
+          PositionedDirectional(
+            top: -8,
+            end: -12,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDC2626),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+              child: Text(
+                count > 99 ? '99+' : '$count',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

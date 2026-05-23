@@ -1,4 +1,56 @@
+import 'package:flutter/services.dart';
+
 class MoneyUtils {
+  static String normalizeDigitsOnly(String input) {
+    const digitMap = {
+      '٠': '0',
+      '١': '1',
+      '٢': '2',
+      '٣': '3',
+      '٤': '4',
+      '٥': '5',
+      '٦': '6',
+      '٧': '7',
+      '٨': '8',
+      '٩': '9',
+      '۰': '0',
+      '۱': '1',
+      '۲': '2',
+      '۳': '3',
+      '۴': '4',
+      '۵': '5',
+      '۶': '6',
+      '۷': '7',
+      '۸': '8',
+      '۹': '9',
+    };
+    final buffer = StringBuffer();
+    for (final rune in input.runes) {
+      final char = String.fromCharCode(rune);
+      final mapped = digitMap[char];
+      if (mapped != null) {
+        buffer.write(mapped);
+      } else if (char.codeUnitAt(0) >= 48 && char.codeUnitAt(0) <= 57) {
+        buffer.write(char);
+      }
+    }
+    return buffer.toString();
+  }
+
+  static String formatDigitString(String digits) {
+    if (digits.isEmpty) return '';
+    final normalized = digits.replaceFirst(RegExp(r'^0+(?=\d)'), '');
+    final buffer = StringBuffer();
+    for (var i = 0; i < normalized.length; i += 1) {
+      final remaining = normalized.length - i;
+      buffer.write(normalized[i]);
+      if (remaining > 1 && remaining % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+    return buffer.toString();
+  }
+
   static String formatWhole(num value) {
     final rounded = value.round().abs().toString();
     final buffer = StringBuffer();
@@ -117,5 +169,48 @@ class MoneyUtils {
     final u = n % 10;
     if (u == 0) return tens[t];
     return '${units[u]} و ${tens[t]}';
+  }
+}
+
+class MoneyInputFormatter extends TextInputFormatter {
+  const MoneyInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = MoneyUtils.normalizeDigitsOnly(newValue.text);
+    if (digits.isEmpty) {
+      return const TextEditingValue(
+        selection: TextSelection.collapsed(offset: 0),
+      );
+    }
+
+    final formatted = MoneyUtils.formatDigitString(digits);
+    final rawSelectionEnd = newValue.selection.end;
+    final safeSelectionEnd = rawSelectionEnd.clamp(0, newValue.text.length).toInt();
+    final selectedText = rawSelectionEnd <= 0 ? '' : newValue.text.substring(0, safeSelectionEnd);
+    final digitsBeforeCursor = MoneyUtils.normalizeDigitsOnly(selectedText).length;
+    final cursorOffset = _offsetAfterDigits(formatted, digitsBeforeCursor);
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: cursorOffset),
+      composing: TextRange.empty,
+    );
+  }
+
+  int _offsetAfterDigits(String text, int digitCount) {
+    if (digitCount <= 0) return 0;
+    var seen = 0;
+    for (var i = 0; i < text.length; i += 1) {
+      final code = text.codeUnitAt(i);
+      if (code >= 48 && code <= 57) {
+        seen += 1;
+        if (seen >= digitCount) return i + 1;
+      }
+    }
+    return text.length;
   }
 }

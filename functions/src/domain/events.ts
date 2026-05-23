@@ -76,9 +76,10 @@ function buildNotificationText(type: NotificationJobType, event: BookingEvent): 
         screen: 'chat',
       };
     case 'booking_auto_cancelled_11h':
+    case 'booking_auto_cancelled_14h':
       return {
         title: 'تم إلغاء الطلب تلقائياً',
-        body: 'تم إلغاء الطلب لأنه لم يكتمل خلال 11 ساعة.',
+        body: 'تم إلغاء الطلب لأنه لم يكتمل خلال 14 ساعة.',
         screen: 'booking_details',
       };
     default:

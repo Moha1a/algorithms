@@ -11,7 +11,7 @@ function getDb(): FirebaseFirestore.Firestore {
 
 const ACTIVE_STATUSES = new Set(['pending', 'accepted', 'in_progress', 'awaiting_provider_code']);
 const TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'rejected', 'closed']);
-const ELEVEN_HOURS_MS = 11 * 60 * 60 * 1000;
+const FOURTEEN_HOURS_MS = 14 * 60 * 60 * 1000;
 
 function clean(value: unknown): string {
   return String(value ?? '').trim();
@@ -33,12 +33,12 @@ async function createAutoCancelNotification(params: {
   actorId: string;
 }): Promise<void> {
   const {bookingId, recipientUid, actorId} = params;
-  const dedupeKey = `booking_auto_cancelled_11h:${bookingId}:${recipientUid}`;
+  const dedupeKey = `booking_auto_cancelled_14h:${bookingId}:${recipientUid}`;
 
   await runIdempotent({
     dedupeKey,
     metadata: {
-      push_event_type: 'booking_auto_cancelled_11h',
+      push_event_type: 'booking_auto_cancelled_14h',
       push_dedupe_key: dedupeKey,
       push_actor_uid: actorId,
       push_recipient_uid: recipientUid,
@@ -47,16 +47,16 @@ async function createAutoCancelNotification(params: {
     run: async () => {
       await getDb().collection('notifications').add({
         toUserId: recipientUid,
-        type: 'booking_auto_cancelled_11h',
+        type: 'booking_auto_cancelled_14h',
         bookingId,
         title: 'تم إلغاء الطلب تلقائياً',
-        body: 'تم إلغاء الطلب لأنه لم يكتمل خلال 11 ساعة.',
+        body: 'تم إلغاء الطلب لأنه لم يكتمل خلال 14 ساعة.',
         isRead: false,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       const job = buildNotificationJob({
-        type: 'booking_auto_cancelled_11h',
+        type: 'booking_auto_cancelled_14h',
         recipientUid,
         bookingId,
         actorId,
@@ -65,7 +65,7 @@ async function createAutoCancelNotification(params: {
         sourceEventId: `auto_cancel_${bookingId}`,
         notification: {
           title: 'تم إلغاء الطلب تلقائياً',
-          body: 'تم إلغاء الطلب لأنه لم يكتمل خلال 11 ساعة.',
+          body: 'تم إلغاء الطلب لأنه لم يكتمل خلال 14 ساعة.',
         },
         data: {dedupeKey},
       });
@@ -79,7 +79,7 @@ export const autoCancelStaleBookings = onSchedule(
   async () => {
     const db = getDb();
     const now = Date.now();
-    const threshold = now - ELEVEN_HOURS_MS;
+    const threshold = now - FOURTEEN_HOURS_MS;
 
     const activeSnap = await db
       .collection('bookings')
@@ -128,7 +128,7 @@ export const autoCancelStaleBookings = onSchedule(
           {
             status: 'cancelled',
             cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
-            cancelReason: 'auto_timeout_11_hours',
+            cancelReason: 'auto_timeout_14_hours',
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           {merge: true}

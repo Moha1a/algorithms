@@ -23,6 +23,7 @@ class NotificationRouter {
       case 'booking_price_proposed':
       case 'chat_message_created':
       case 'booking_auto_cancelled_11h':
+      case 'booking_auto_cancelled_14h':
         nav.push(
           MaterialPageRoute(
             builder: (_) => NotificationDebugScreen(

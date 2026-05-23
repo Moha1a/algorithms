@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../services/auth_service.dart';
 import '../theme/app_colors.dart';
 import 'auth_screen.dart';
-import 'home_shell_screen.dart';
 
 enum UserRole { client, outlet }
 
@@ -17,9 +15,6 @@ class RoleSelectionScreen extends StatefulWidget {
 }
 
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
-  final AuthService _authService = AuthService();
-  String? _loadingTrialRole;
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -42,9 +37,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 subtitle: 'أنشئ طلبك وشاهد عروض المنافذ بوضوح، ثم اختر العرض الأنسب لك قبل التأكيد.',
                 icon: Icons.person_rounded,
                 color: AppColors.primaryDark,
-                trialLoading: _loadingTrialRole == 'client',
                 onTap: () => _goToAuth(UserRole.client),
-                onTrialTap: () => _loginAsTrial('client'),
               ),
               const SizedBox(height: 12),
               _RoleCard(
@@ -52,9 +45,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 subtitle: 'استعرض الطلبات القريبة، قدّم عرضك، وتابع التنفيذ من مكان واحد.',
                 icon: Icons.storefront_rounded,
                 color: AppColors.success,
-                trialLoading: _loadingTrialRole == 'outlet',
                 onTap: () => _goToAuth(UserRole.outlet),
-                onTrialTap: () => _loginAsTrial('outlet'),
               ),
             ],
           ),
@@ -70,26 +61,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         settings: RouteSettings(arguments: role),
       ),
     );
-  }
-
-  Future<void> _loginAsTrial(String role) async {
-    if (_loadingTrialRole != null) return;
-    setState(() => _loadingTrialRole = role);
-    try {
-      final profile = await _authService.loginAsTestAccount(role: role);
-      if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => HomeShellScreen(profile: profile)),
-        (_) => false,
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر فتح حساب التجربة حالياً: $error')),
-      );
-    } finally {
-      if (mounted) setState(() => _loadingTrialRole = null);
-    }
   }
 }
 
@@ -197,18 +168,14 @@ class _RoleCard extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     required this.color,
-    required this.trialLoading,
     required this.onTap,
-    required this.onTrialTap,
   });
 
   final String title;
   final String subtitle;
   final IconData icon;
   final Color color;
-  final bool trialLoading;
   final VoidCallback onTap;
-  final VoidCallback onTrialTap;
 
   @override
   Widget build(BuildContext context) {
@@ -225,69 +192,49 @@ class _RoleCard extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              InkWell(
-                onTap: onTap,
-                borderRadius: BorderRadius.circular(18),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: color.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Icon(icon, color: color, size: 30),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            subtitle,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: AppColors.textMuted,
-                              height: 1.45,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: AppColors.textMuted),
-                  ],
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(18),
+            child: Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, color: color, size: 30),
                 ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                height: 44,
-                child: OutlinedButton.icon(
-                  onPressed: trialLoading ? null : onTrialTap,
-                  icon: trialLoading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.play_circle_outline_rounded),
-                  label: Text(trialLoading ? 'جاري فتح التجربة...' : 'تسجيل تجربة'),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textMuted,
+                          height: 1.45,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: AppColors.textMuted),
+              ],
+            ),
           ),
         ),
       ),

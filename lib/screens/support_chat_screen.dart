@@ -164,14 +164,14 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
         'toUserId': 'admin',
         'type': 'trip_support',
         'bookingId': bookingId,
-        'title': 'رسالة دعم رحلة',
+        'title': 'رسالة دعم طلب',
         'body': safeMessage,
         'isRead': false,
         'createdAt': FieldValue.serverTimestamp(),
       });
       await FirebaseFirestore.instance.collection('admin_inbox').doc('trip_support_$bookingId').set({
         'threadPath': widget.threadPath,
-        'title': 'دعم رحلة $bookingId',
+        'title': 'دعم طلب',
         'lastMessage': safeMessage,
         'senderId': widget.currentUserId,
         'updatedAt': FieldValue.serverTimestamp(),

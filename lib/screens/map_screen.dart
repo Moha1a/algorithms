@@ -151,7 +151,7 @@ class MapScreen extends StatelessWidget {
               final safeAmount = _safeDouble(b['amount']);
               return Card(
                 child: ListTile(
-                  title: Text('رحلة نشطة: ${_safeString(b['bookingId'], fallback: docs[i].id)}'),
+                  title: const Text('طلب نشط'),
                   subtitle: Text(
                     'الحالة: ${_safeString(b['status'], fallback: 'pending')} • المبلغ: ${MoneyUtils.iqdWithWords(safeAmount)} • العمولة: ${MoneyUtils.iqdWithWords(_commissionFromBooking(b))}',
                   ),
@@ -243,8 +243,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
         FirebaseCrashlytics.instance.setCustomKey('current_user_role', widget.role);
         if (booking == null) {
           return Scaffold(
-            appBar: AppBar(title: const Text('تفاصيل الرحلة')),
-            body: const Center(child: Text('تعذر تحميل الرحلة.')),
+            appBar: AppBar(title: const Text('تفاصيل الطلب')),
+            body: const Center(child: Text('تعذر تحميل الطلب.')),
           );
         }
 
@@ -268,7 +268,7 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
         final outlet = _extractLatLng(booking, candidateRoots: ['outletLocation', 'outlet']);
 
         return Scaffold(
-          appBar: AppBar(title: Text('رحلة $bookingId')),
+          appBar: AppBar(title: const Text('تفاصيل الطلب')),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -280,7 +280,7 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
                   child: Text(
-                    'تعذر تحديد الإحداثيات الدقيقة للطرفين حالياً، لكن شاشة الرحلة ما زالت متاحة.',
+                    'تعذر تحديد الإحداثيات الدقيقة للطرفين حالياً، لكن شاشة الطلب ما زالت متاحة.',
                     style: TextStyle(color: Colors.redAccent),
                   ),
                 ),
