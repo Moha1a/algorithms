@@ -30,6 +30,7 @@ class AuthService {
   static const _appReviewNormalizedPhone = '+9641111112222';
   static const _appReviewClientEmail = 'app.review.client@monfathak.local';
   static const _appReviewOutletEmail = 'app.review.outlet@monfathak.local';
+  static const _appReviewAdminEmail = 'app.review.admin@monfathak.local';
 
   static bool isAppReviewPhoneInput(String phoneNumber) {
     final digits = phoneNumber.replaceAll(RegExp(r'\D'), '');
@@ -503,8 +504,18 @@ class AuthService {
       throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
     }
 
-    final isOutlet = role == 'outlet';
-    final email = isOutlet ? _appReviewOutletEmail : _appReviewClientEmail;
+    final normalizedRole = role == 'admin'
+        ? 'admin'
+        : role == 'outlet'
+            ? 'outlet'
+            : 'client';
+    final isOutlet = normalizedRole == 'outlet';
+    final isAdmin = normalizedRole == 'admin';
+    final email = isAdmin
+        ? _appReviewAdminEmail
+        : isOutlet
+            ? _appReviewOutletEmail
+            : _appReviewClientEmail;
 
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: appReviewPassword);
@@ -520,15 +531,19 @@ class AuthService {
 
     final profile = <String, dynamic>{
       'uid': uid,
-      'fullName': isOutlet ? 'منفذ مراجعة Apple' : 'عميل مراجعة Apple',
-      'role': role,
+      'fullName': isAdmin
+          ? 'أدمن مراجعة Apple'
+          : isOutlet
+              ? 'منفذ مراجعة Apple'
+              : 'عميل مراجعة Apple',
+      'role': normalizedRole,
       'governorate': 'بغداد',
       'phoneNumber': _appReviewNormalizedPhone,
       'passwordHash': _hashPassword(appReviewPassword),
       'termsAccepted': true,
       'termsAcceptedAt': FieldValue.serverTimestamp(),
       'termsVersion': 'app_review',
-      'termsAcceptedRole': role,
+      'termsAcceptedRole': normalizedRole,
       'isTestAccount': true,
       'isAppReviewAccount': true,
       'updatedAt': FieldValue.serverTimestamp(),

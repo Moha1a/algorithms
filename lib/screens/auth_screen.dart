@@ -8,6 +8,7 @@ import '../services/auth_service.dart';
 import '../services/iraqi_phone_utils.dart';
 import '../theme/app_colors.dart';
 import 'admin_dashboard_screen.dart';
+import 'app_review_access_screen.dart';
 import 'home_shell_screen.dart';
 import 'otp_verification_screen.dart';
 import 'outlet_approval_pending_screen.dart';
@@ -300,13 +301,17 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       if (isAppReviewLogin) {
-        final profile = await _authService.loginAsAppReviewAccount(
-          role: selectedRole,
-          phoneNumber: _phoneController.text,
-          password: _passwordController.text,
-        );
         if (!mounted) return;
-        _openPostAuthScreen(profile);
+        _safeNavigate(() {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => AppReviewAccessScreen(
+                phoneNumber: _phoneController.text,
+                password: _passwordController.text,
+              ),
+            ),
+          );
+        });
         return;
       }
 

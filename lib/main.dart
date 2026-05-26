@@ -11,8 +11,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'firebase_options.dart';
+import 'screens/admin_dashboard_screen.dart';
+import 'screens/app_review_access_screen.dart';
 import 'screens/home_shell_screen.dart';
 import 'screens/role_selection_screen.dart';
+import 'services/auth_service.dart';
 import 'services/push_notifications_service.dart';
 import 'theme/app_theme.dart';
 
@@ -199,6 +202,15 @@ class _FirebaseBootstrapperState extends State<_FirebaseBootstrapper> {
           .timeout(const Duration(seconds: 8));
       final profile = snap.data();
       if (profile == null) return const RoleSelectionScreen();
+      if (profile['isAppReviewAccount'] == true) {
+        return const AppReviewAccessScreen(
+          phoneNumber: AuthService.appReviewPhone,
+          password: AuthService.appReviewPassword,
+        );
+      }
+      if ((profile['role'] ?? '').toString() == 'admin') {
+        return const AdminDashboardScreen();
+      }
       return HomeShellScreen(profile: profile);
     } catch (error, stackTrace) {
       debugPrint('INITIAL SCREEN RESOLVE FAILED: $error');
