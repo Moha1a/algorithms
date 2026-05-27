@@ -45,6 +45,11 @@ workflows:
       cocoapods: default
 
     scripts:
+      - name: Clean old release artifacts
+        script: |
+          flutter clean
+          rm -rf build/ios/ipa build/ios/archive build/ios/iphoneos
+
       - name: Get Flutter packages
         script: |
           flutter pub get
@@ -57,10 +62,30 @@ workflows:
 
       - name: Build iOS release IPA
         script: |
+          set -euo pipefail
           APP_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
           BUILD_NAME=${APP_VERSION%%+*}
           BUILD_NUMBER=${APP_VERSION##*+}
+          echo "Building iOS version ${BUILD_NAME} (${BUILD_NUMBER})"
+          if [ "$BUILD_NAME" = "1.0.0" ]; then
+            echo "App Store train 1.0.0 is closed. Bump pubspec.yaml to 1.0.1 or higher."
+            exit 1
+          fi
+          if [ "$BUILD_NUMBER" -le 20 ]; then
+            echo "Build number ${BUILD_NUMBER} is not higher than the previously uploaded build 20."
+            exit 1
+          fi
           flutter build ipa --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+          IPA_PATH=$(ls -1 build/ios/ipa/*.ipa | head -n 1)
+          INFO_PLIST=$(mktemp)
+          unzip -p "$IPA_PATH" "Payload/Runner.app/Info.plist" > "$INFO_PLIST"
+          ACTUAL_BUILD_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$INFO_PLIST")
+          ACTUAL_BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$INFO_PLIST")
+          echo "IPA contains iOS version ${ACTUAL_BUILD_NAME} (${ACTUAL_BUILD_NUMBER})"
+          if [ "$ACTUAL_BUILD_NAME" != "$BUILD_NAME" ] || [ "$ACTUAL_BUILD_NUMBER" != "$BUILD_NUMBER" ]; then
+            echo "IPA version mismatch. Refusing to publish stale artifact."
+            exit 1
+          fi
 
     artifacts:
       - build/ios/ipa/*.ipa
