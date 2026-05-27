@@ -32,6 +32,23 @@ class AuthService {
   static const _appReviewOutletEmail = 'app.review.outlet@monfathak.local';
   static const _appReviewAdminEmail = 'app.review.admin@monfathak.local';
 
+  static String _appReviewEmailForRole(String role) {
+    final normalizedRole = role == 'admin'
+        ? 'admin'
+        : role == 'outlet'
+            ? 'outlet'
+            : 'client';
+    if (normalizedRole == 'admin') return _appReviewAdminEmail;
+    if (normalizedRole == 'outlet') return _appReviewOutletEmail;
+    return _appReviewClientEmail;
+  }
+
+  static bool _isAppReviewEmail(String email) {
+    return email == _appReviewClientEmail ||
+        email == _appReviewOutletEmail ||
+        email == _appReviewAdminEmail;
+  }
+
   static bool isAppReviewPhoneInput(String phoneNumber) {
     final digits = phoneNumber.replaceAll(RegExp(r'\D'), '');
     return digits == appReviewPhone || IraqiPhoneUtils.normalize(phoneNumber) == _appReviewNormalizedPhone;
@@ -511,11 +528,7 @@ class AuthService {
             : 'client';
     final isOutlet = normalizedRole == 'outlet';
     final isAdmin = normalizedRole == 'admin';
-    final email = isAdmin
-        ? _appReviewAdminEmail
-        : isOutlet
-            ? _appReviewOutletEmail
-            : _appReviewClientEmail;
+    final email = _appReviewEmailForRole(normalizedRole);
 
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: appReviewPassword);
@@ -589,6 +602,214 @@ class AuthService {
     } catch (_) {}
 
     await _auth.signOut();
+  }
+
+  Future<void> deleteCurrentAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      await _auth.signOut();
+      return;
+    }
+
+    final uid = user.uid.trim();
+    if (uid.isEmpty) {
+      await _auth.signOut();
+      return;
+    }
+
+    final crashlytics = FirebaseCrashlytics.instance;
+    crashlytics.log('account_deletion_started uid=$uid');
+    crashlytics.setCustomKey('account_deletion_uid', uid);
+    crashlytics.setCustomKey('account_deletion_success', false);
+
+    await _reauthenticateAppReviewUserIfNeeded(user);
+
+    try {
+      await DeviceRegistrationService.instance.unregisterCurrentDeviceForUser(uid);
+      await DeviceRegistrationService.instance.stopTokenRefreshListener();
+    } catch (error, stackTrace) {
+      debugPrint('[AuthService] account deletion device cleanup ignored: $error');
+      debugPrint('$stackTrace');
+      crashlytics.recordError(error, stackTrace, fatal: false);
+    }
+
+    try {
+      await _cancelActiveBookingsForDeletedAccount(uid);
+      await _deleteAccountCollections(uid);
+      await _deleteAccountNotificationsAndRatings(uid);
+    } catch (error, stackTrace) {
+      debugPrint('[AuthService] account related data cleanup ignored: $error');
+      debugPrint('$stackTrace');
+      crashlytics.recordError(error, stackTrace, fatal: false);
+    }
+
+    await _deleteOrAnonymizeUserDocument(uid);
+
+    try {
+      await user.delete();
+    } on FirebaseAuthException catch (error) {
+      if (error.code == 'requires-recent-login') {
+        throw FirebaseAuthException(
+          code: 'requires-recent-login',
+          message: 'يرجى تسجيل الخروج ثم تسجيل الدخول مرة أخرى قبل حذف الحساب.',
+        );
+      }
+      rethrow;
+    }
+
+    crashlytics.setCustomKey('account_deletion_success', true);
+    crashlytics.log('account_deletion_completed uid=$uid');
+    await _auth.signOut();
+  }
+
+  Future<void> _reauthenticateAppReviewUserIfNeeded(User user) async {
+    final email = (user.email ?? '').trim();
+    if (!_isAppReviewEmail(email)) return;
+
+    try {
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(
+          email: email,
+          password: appReviewPassword,
+        ),
+      );
+      debugPrint('[AuthService] app review user reauthenticated before deletion');
+    } catch (error, stackTrace) {
+      debugPrint('[AuthService] app review reauthentication failed: $error');
+      debugPrint('$stackTrace');
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+      rethrow;
+    }
+  }
+
+  Future<void> _deleteAccountCollections(String uid) async {
+    final userRef = _firestore.collection('users').doc(uid);
+    await _deleteCollectionDocs(userRef.collection('devices'));
+    await _deleteCollectionDocs(userRef.collection('fcmTokens'));
+    await _deleteCollectionDocs(_firestore.collection('support_general').doc(uid).collection('messages'));
+    await _safeDeleteDocument(_firestore.collection('support_general').doc(uid));
+  }
+
+  Future<void> _deleteAccountNotificationsAndRatings(String uid) async {
+    await _deleteMatchingDocs(collection: 'notifications', field: 'toUserId', value: uid);
+    await _deleteMatchingDocs(collection: 'notifications', field: 'actorId', value: uid);
+    await _deleteMatchingDocs(collection: 'admin_inbox', field: 'toUserId', value: uid);
+    await _deleteMatchingDocs(collection: 'ratings', field: 'fromUserId', value: uid);
+    await _deleteMatchingDocs(collection: 'ratings', field: 'toUserId', value: uid);
+  }
+
+  Future<void> _cancelActiveBookingsForDeletedAccount(String uid) async {
+    const fields = ['createdById', 'clientId', 'outletId'];
+    const activeStatuses = {'pending', 'accepted', 'in_progress'};
+
+    for (final field in fields) {
+      DocumentSnapshot<Map<String, dynamic>>? lastDoc;
+      while (true) {
+        Query<Map<String, dynamic>> query = _firestore
+            .collection('bookings')
+            .where(field, isEqualTo: uid)
+            .orderBy(FieldPath.documentId)
+            .limit(200);
+        if (lastDoc != null) {
+          query = query.startAfterDocument(lastDoc);
+        }
+
+        final snap = await query.get().timeout(const Duration(seconds: 12));
+        if (snap.docs.isEmpty) break;
+
+        final batch = _firestore.batch();
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          final status = (data['status'] ?? '').toString();
+          final updates = <String, dynamic>{
+            'updatedAt': FieldValue.serverTimestamp(),
+            'accountDeletedAt': FieldValue.serverTimestamp(),
+          };
+
+          if (field == 'clientId' || field == 'createdById') {
+            updates['clientName'] = 'مستخدم محذوف';
+          }
+          if (field == 'outletId') {
+            updates['outletName'] = 'مستخدم محذوف';
+          }
+          if (activeStatuses.contains(status)) {
+            updates.addAll({
+              'status': 'cancelled',
+              'cancelReason': 'account_deleted',
+              'cancelledAt': FieldValue.serverTimestamp(),
+              'cancelledBy': uid,
+            });
+          }
+
+          batch.set(doc.reference, updates, SetOptions(merge: true));
+        }
+        await batch.commit();
+        lastDoc = snap.docs.last;
+      }
+    }
+  }
+
+  Future<void> _deleteOrAnonymizeUserDocument(String uid) async {
+    final userRef = _firestore.collection('users').doc(uid);
+    try {
+      await userRef.delete();
+    } on FirebaseException catch (error, stackTrace) {
+      debugPrint('[AuthService] user doc delete failed, anonymizing instead: $error');
+      debugPrint('$stackTrace');
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+      await userRef.set({
+        'uid': uid,
+        'role': 'deleted',
+        'fullName': 'مستخدم محذوف',
+        'accountDeleted': true,
+        'accountDeletedAt': FieldValue.serverTimestamp(),
+        'phoneNumber': FieldValue.delete(),
+        'outletName': FieldValue.delete(),
+        'passwordHash': FieldValue.delete(),
+        'termsAcceptedItems': FieldValue.delete(),
+        'fcmToken': FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+  }
+
+  Future<void> _deleteCollectionDocs(CollectionReference<Map<String, dynamic>> ref) async {
+    while (true) {
+      final snap = await ref.limit(200).get().timeout(const Duration(seconds: 12));
+      if (snap.docs.isEmpty) return;
+      final batch = _firestore.batch();
+      for (final doc in snap.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
+  }
+
+  Future<void> _deleteMatchingDocs({
+    required String collection,
+    required String field,
+    required String value,
+  }) async {
+    while (true) {
+      final snap = await _firestore
+          .collection(collection)
+          .where(field, isEqualTo: value)
+          .limit(200)
+          .get()
+          .timeout(const Duration(seconds: 12));
+      if (snap.docs.isEmpty) return;
+      final batch = _firestore.batch();
+      for (final doc in snap.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
+  }
+
+  Future<void> _safeDeleteDocument(DocumentReference<Map<String, dynamic>> ref) async {
+    try {
+      await ref.delete();
+    } catch (_) {}
   }
 
   Future<void> _migrateLegacyUidIfNeeded({

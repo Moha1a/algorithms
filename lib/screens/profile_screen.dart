@@ -18,6 +18,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late final TextEditingController _nameController;
   final AuthService _authService = AuthService();
   bool _saving = false;
+  bool _deleting = false;
   static const Duration _nameChangeCooldown = Duration(days: 14);
 
   @override
@@ -156,7 +157,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 8),
           FilledButton.icon(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () async {
+            onPressed: _deleting
+                ? null
+                : () async {
               final confirm = await showDialog<bool>(
                 context: context,
                 builder: (dialogContext) => AlertDialog(
@@ -185,8 +188,68 @@ class _ProfileScreenState extends State<ProfileScreen> {
             icon: const Icon(Icons.logout_rounded),
             label: const Text('تسجيل الخروج'),
           ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.redAccent,
+              side: const BorderSide(color: Colors.redAccent),
+            ),
+            onPressed: _deleting ? null : _confirmAndDeleteAccount,
+            icon: _deleting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.delete_forever_rounded),
+            label: Text(_deleting ? 'جاري حذف الحساب...' : 'حذف الحساب نهائياً'),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _confirmAndDeleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('حذف الحساب نهائياً'),
+        content: const Text(
+          'سيتم حذف حسابك من التطبيق وإزالة بيانات الدخول والتنبيهات المرتبطة به. لا يمكن التراجع عن هذه العملية.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('حذف الحساب'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    if (mounted) setState(() => _deleting = true);
+    try {
+      await _authService.deleteCurrentAccount();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم حذف الحساب بنجاح.')),
+      );
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+        (route) => false,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_authService.mapFirebaseAuthError(error))),
+      );
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
   }
 }
