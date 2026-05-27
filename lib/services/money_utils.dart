@@ -1,40 +1,10 @@
 import 'package:flutter/services.dart';
 
+import 'input_digit_utils.dart';
+
 class MoneyUtils {
   static String normalizeDigitsOnly(String input) {
-    const digitMap = {
-      '٠': '0',
-      '١': '1',
-      '٢': '2',
-      '٣': '3',
-      '٤': '4',
-      '٥': '5',
-      '٦': '6',
-      '٧': '7',
-      '٨': '8',
-      '٩': '9',
-      '۰': '0',
-      '۱': '1',
-      '۲': '2',
-      '۳': '3',
-      '۴': '4',
-      '۵': '5',
-      '۶': '6',
-      '۷': '7',
-      '۸': '8',
-      '۹': '9',
-    };
-    final buffer = StringBuffer();
-    for (final rune in input.runes) {
-      final char = String.fromCharCode(rune);
-      final mapped = digitMap[char];
-      if (mapped != null) {
-        buffer.write(mapped);
-      } else if (char.codeUnitAt(0) >= 48 && char.codeUnitAt(0) <= 57) {
-        buffer.write(char);
-      }
-    }
-    return buffer.toString();
+    return InputDigitUtils.digitsOnly(input);
   }
 
   static String formatDigitString(String digits) {

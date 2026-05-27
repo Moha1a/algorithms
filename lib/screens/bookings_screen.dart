@@ -3,11 +3,12 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../services/input_digit_utils.dart';
+import '../services/location_guard_service.dart';
+import '../services/money_utils.dart';
 import '../theme/app_colors.dart';
 import 'create_booking_screen.dart';
 import 'support_chat_screen.dart';
-import '../services/money_utils.dart';
-import '../services/location_guard_service.dart';
 import 'map_screen.dart';
 
 enum BookingFilter { active, history }
@@ -1418,6 +1419,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
+          inputFormatters: const [DigitOnlyInputFormatter()],
           decoration: const InputDecoration(labelText: 'الرمز المؤقت'),
         ),
         actions: [
@@ -1434,7 +1436,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
     );
     if (ok != true) return;
 
-    final code = controller.text.trim();
+    final code = InputDigitUtils.digitsOnly(controller.text);
     final ref = FirebaseFirestore.instance.collection('bookings').doc(bookingDocId);
     try {
       await FirebaseFirestore.instance.runTransaction((tx) async {

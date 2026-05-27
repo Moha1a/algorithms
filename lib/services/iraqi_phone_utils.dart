@@ -1,13 +1,15 @@
+import 'input_digit_utils.dart';
+
 class IraqiPhoneUtils {
   static const String countryCode = '+964';
 
   static String normalize(String rawInput) {
-    final raw = rawInput.trim();
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    final raw = InputDigitUtils.normalizeArabicDigits(rawInput.trim());
+    final digits = InputDigitUtils.digitsOnly(raw);
     String local = digits;
 
     if (raw.startsWith('+964')) {
-      local = raw.substring(4).replaceAll(RegExp(r'\D'), '');
+      local = InputDigitUtils.digitsOnly(raw.substring(4));
     } else if (digits.startsWith('964')) {
       local = digits.substring(3);
     }

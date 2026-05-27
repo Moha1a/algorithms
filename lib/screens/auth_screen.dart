@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/auth_service.dart';
+import '../services/input_digit_utils.dart';
 import '../services/iraqi_phone_utils.dart';
 import '../theme/app_colors.dart';
 import 'admin_dashboard_screen.dart';
@@ -35,10 +36,11 @@ class _AuthScreenState extends State<AuthScreen> {
   final _outletNameController = TextEditingController();
 
   final AuthService _authService = AuthService();
-  bool _isLogin = true;
+  bool _isLogin = false;
   bool _isLoading = false;
   bool _isNavigating = false;
   bool _acceptedTerms = false;
+  bool _passwordVisible = false;
   final String _selectedGovernorate = 'البصرة';
 
   @override
@@ -167,6 +169,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             child: TextFormField(
                               controller: _phoneController,
                               keyboardType: TextInputType.phone,
+                              inputFormatters: const [PhoneNumberInputFormatter()],
                               textDirection: TextDirection.ltr,
                               decoration: const InputDecoration(
                                 labelText: 'رقم الهاتف',
@@ -183,9 +186,18 @@ class _AuthScreenState extends State<AuthScreen> {
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _passwordController,
-                        obscureText: true,
+                        obscureText: !_passwordVisible,
                         textDirection: TextDirection.ltr,
-                        decoration: const InputDecoration(labelText: 'كلمة المرور'),
+                        decoration: InputDecoration(
+                          labelText: 'كلمة المرور',
+                          suffixIcon: IconButton(
+                            tooltip: _passwordVisible ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور',
+                            icon: Icon(
+                              _passwordVisible ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                            ),
+                            onPressed: () => setState(() => _passwordVisible = !_passwordVisible),
+                          ),
+                        ),
                         validator: (v) {
                           if (v == null || v.trim().isEmpty) return 'يرجى إدخال كلمة المرور';
                           if (v.trim().length < 6) return 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
@@ -263,6 +275,24 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _submit(String selectedRole) async {
     debugPrint('[LOGIN FLOW] button pressed');
+    final isAppReviewAccess = AuthService.isAppReviewCredentials(
+      phoneNumber: _phoneController.text,
+      password: _passwordController.text,
+    );
+    if (isAppReviewAccess) {
+      _safeNavigate(() {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => AppReviewAccessScreen(
+              phoneNumber: _phoneController.text,
+              password: _passwordController.text,
+            ),
+          ),
+        );
+      });
+      return;
+    }
+
     final formState = _formKey.currentState;
     if (formState == null || !formState.validate()) return;
     if (!_isLogin && !_acceptedTerms) {
@@ -279,11 +309,6 @@ class _AuthScreenState extends State<AuthScreen> {
 
     final normalizedPhone = IraqiPhoneUtils.normalize(_phoneController.text);
     debugPrint('[LOGIN INPUT] rawPhone=${_phoneController.text} countryCode=+964 normalizedPhone=$normalizedPhone role=$selectedRole');
-    final isAppReviewLogin = _isLogin &&
-        AuthService.isAppReviewCredentials(
-          phoneNumber: _phoneController.text,
-          password: _passwordController.text,
-        );
     final isAdminOutletLogin = _isLogin &&
         selectedRole == 'outlet' &&
         normalizedPhone == _adminPhone &&
@@ -300,21 +325,6 @@ class _AuthScreenState extends State<AuthScreen> {
     var flowHandled = false;
 
     try {
-      if (isAppReviewLogin) {
-        if (!mounted) return;
-        _safeNavigate(() {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (_) => AppReviewAccessScreen(
-                phoneNumber: _phoneController.text,
-                password: _passwordController.text,
-              ),
-            ),
-          );
-        });
-        return;
-      }
-
       if (_isLogin) {
         await _authService.assertLoginPasswordBeforeOtp(
           phoneNumber: normalizedPhone,
@@ -466,6 +476,7 @@ class _AuthScreenState extends State<AuthScreen> {
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.phone,
+          inputFormatters: const [PhoneNumberInputFormatter()],
           textDirection: TextDirection.ltr,
           decoration: const InputDecoration(
             labelText: 'رقم الهاتف',

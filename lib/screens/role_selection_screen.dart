@@ -23,18 +23,19 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFFFF4E3), AppColors.background],
+            colors: [Color(0xFFFFF7EA), Color(0xFFF6FAFB)],
           ),
         ),
         child: SafeArea(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
             children: [
               const _WelcomeHero(),
               const SizedBox(height: 18),
               _RoleCard(
                 title: 'أنا زبون',
-                subtitle: 'أنشئ طلبك وشاهد عروض المنافذ بوضوح، ثم اختر العرض الأنسب لك قبل التأكيد.',
+                subtitle: 'أنشئ طلب سحب أو شحن، قارن العروض، واختر الأنسب لك بثقة.',
+                badge: 'للطلبات الشخصية',
                 icon: Icons.person_rounded,
                 color: AppColors.primaryDark,
                 onTap: () => _goToAuth(UserRole.client),
@@ -42,7 +43,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               const SizedBox(height: 12),
               _RoleCard(
                 title: 'أنا صاحب منفذ',
-                subtitle: 'استعرض الطلبات القريبة، قدّم عرضك، وتابع التنفيذ من مكان واحد.',
+                subtitle: 'استقبل الطلبات الجديدة، قدّم عروضك، وتابع عملياتك من مكان واحد.',
+                badge: 'للمنافذ',
                 icon: Icons.storefront_rounded,
                 color: AppColors.success,
                 onTap: () => _goToAuth(UserRole.outlet),
@@ -70,13 +72,13 @@ class _WelcomeHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(28),
         border: Border.all(color: AppColors.border),
         boxShadow: const [
-          BoxShadow(color: AppColors.shadow, blurRadius: 22, offset: Offset(0, 12)),
+          BoxShadow(color: AppColors.shadow, blurRadius: 24, offset: Offset(0, 14)),
         ],
       ),
       child: Column(
@@ -85,10 +87,10 @@ class _WelcomeHero extends StatelessWidget {
           Center(
             child: Container(
               width: 238,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: const Color(0xFFEAF0F7)),
                 boxShadow: const [
                   BoxShadow(color: AppColors.shadow, blurRadius: 18, offset: Offset(0, 8)),
@@ -104,26 +106,38 @@ class _WelcomeHero extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 14),
-          const Text(
-            'قارن عروض المنافذ واختر بثقة',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 15, color: AppColors.textMuted, height: 1.4, fontWeight: FontWeight.w700),
-          ),
           const SizedBox(height: 18),
           const Text(
-            'بدلاً من قبول أول عمولة، خلّي أكثر من منفذ يتنافس على طلبك وشاهد الفرق قبل الاختيار.',
-            style: TextStyle(fontSize: 16, height: 1.55, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+            'منفذك لخدمات السحب والشحن',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 21,
+              height: 1.25,
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'منصة آمنة تساعدك تقارن بين عروض المنافذ وتختار بوضوح قبل تأكيد العملية.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              color: AppColors.textMuted,
+              height: 1.55,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 16),
           const Wrap(
+            alignment: WrapAlignment.center,
             spacing: 8,
             runSpacing: 8,
             children: [
               _HeroPill(icon: Icons.lock_rounded, label: 'آمن'),
               _HeroPill(icon: Icons.savings_rounded, label: 'وفر حتى 50%'),
-              _HeroPill(icon: Icons.compare_arrows_rounded, label: 'قارن بين العروض'),
-              _HeroPill(icon: Icons.payments_rounded, label: 'عمولات أقل'),
+              _HeroPill(icon: Icons.compare_arrows_rounded, label: 'قارن العروض'),
+              _HeroPill(icon: Icons.verified_rounded, label: 'منافذ واضحة'),
             ],
           ),
         ],
@@ -141,7 +155,7 @@ class _HeroPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
         color: AppColors.primarySoft,
         borderRadius: BorderRadius.circular(18),
@@ -166,6 +180,7 @@ class _RoleCard extends StatelessWidget {
   const _RoleCard({
     required this.title,
     required this.subtitle,
+    required this.badge,
     required this.icon,
     required this.color,
     required this.onTap,
@@ -173,6 +188,7 @@ class _RoleCard extends StatelessWidget {
 
   final String title;
   final String subtitle;
+  final String badge;
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
@@ -181,60 +197,79 @@ class _RoleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
-      child: Ink(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: AppColors.border),
-          boxShadow: const [
-            BoxShadow(color: AppColors.shadow, blurRadius: 14, offset: Offset(0, 8)),
-          ],
-        ),
-        child: Padding(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Ink(
           padding: const EdgeInsets.all(16),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(18),
-            child: Row(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(icon, color: color, size: 30),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: color.withOpacity(0.18)),
+            boxShadow: const [
+              BoxShadow(color: AppColors.shadow, blurRadius: 16, offset: Offset(0, 9)),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 62,
+                height: 62,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.textPrimary,
-                        ),
+                child: Icon(icon, color: color, size: 32),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(13),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        subtitle,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textMuted,
-                          height: 1.45,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Text(
+                        badge,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textMuted,
+                        height: 1.45,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
-                const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: AppColors.textMuted),
-              ],
-            ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+              ),
+            ],
           ),
         ),
       ),

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/input_digit_utils.dart';
 import '../theme/app_colors.dart';
 import 'home_shell_screen.dart';
 import 'outlet_approval_pending_screen.dart';
@@ -55,6 +56,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   int? _resendToken;
   bool _isLoading = false;
   bool _canResend = false;
+  bool _newPasswordVisible = false;
+  bool _confirmPasswordVisible = false;
   int _secondsLeft = 60;
   Timer? _timer;
   PhoneAuthCredential? _verifiedCredential;
@@ -107,7 +110,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       _showMessage('تعذر بدء التحقق. أعد إرسال الرمز ثم حاول مرة أخرى.');
       return;
     }
-    final code = _otpController.text.trim();
+    final code = InputDigitUtils.digitsOnly(_otpController.text);
     if (code.length < 6) {
       debugPrint('[OTP FLOW] invalid OTP length');
       _showMessage('أدخل رمز OTP صحيح');
@@ -291,6 +294,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               TextField(
                 controller: _otpController,
                 keyboardType: TextInputType.number,
+                inputFormatters: const [DigitOnlyInputFormatter(maxLength: 6)],
                 textDirection: TextDirection.ltr,
                 maxLength: 6,
                 decoration: const InputDecoration(
@@ -334,16 +338,34 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               const SizedBox(height: 12),
               TextField(
                 controller: _newPasswordController,
-                obscureText: true,
+                obscureText: !_newPasswordVisible,
                 textDirection: TextDirection.ltr,
-                decoration: const InputDecoration(labelText: 'كلمة المرور الجديدة'),
+                decoration: InputDecoration(
+                  labelText: 'كلمة المرور الجديدة',
+                  suffixIcon: IconButton(
+                    tooltip: _newPasswordVisible ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور',
+                    icon: Icon(
+                      _newPasswordVisible ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                    ),
+                    onPressed: () => setState(() => _newPasswordVisible = !_newPasswordVisible),
+                  ),
+                ),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: _confirmPasswordController,
-                obscureText: true,
+                obscureText: !_confirmPasswordVisible,
                 textDirection: TextDirection.ltr,
-                decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور'),
+                decoration: InputDecoration(
+                  labelText: 'تأكيد كلمة المرور',
+                  suffixIcon: IconButton(
+                    tooltip: _confirmPasswordVisible ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور',
+                    icon: Icon(
+                      _confirmPasswordVisible ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                    ),
+                    onPressed: () => setState(() => _confirmPasswordVisible = !_confirmPasswordVisible),
+                  ),
+                ),
               ),
               const SizedBox(height: 14),
               SizedBox(

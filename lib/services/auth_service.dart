@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'device_registration_service.dart';
+import 'input_digit_utils.dart';
 import 'iraqi_phone_utils.dart';
 
 class AuthService {
@@ -50,7 +51,7 @@ class AuthService {
   }
 
   static bool isAppReviewPhoneInput(String phoneNumber) {
-    final digits = phoneNumber.replaceAll(RegExp(r'\D'), '');
+    final digits = InputDigitUtils.digitsOnly(phoneNumber);
     return digits == appReviewPhone || IraqiPhoneUtils.normalize(phoneNumber) == _appReviewNormalizedPhone;
   }
 

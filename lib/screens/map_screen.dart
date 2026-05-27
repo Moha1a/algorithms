@@ -9,6 +9,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/input_digit_utils.dart';
 import '../services/money_utils.dart';
 import 'home_shell_screen.dart';
 import 'support_chat_screen.dart';
@@ -381,6 +382,7 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
               TextField(
                 controller: _completionCodeController,
                 keyboardType: TextInputType.number,
+                inputFormatters: const [DigitOnlyInputFormatter()],
                 decoration: const InputDecoration(labelText: 'أدخل رمز الإكمال'),
               ),
               const SizedBox(height: 8),
@@ -646,7 +648,7 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
   }
 
   Future<void> _confirmCompletion() async {
-    final enteredCode = _completionCodeController.text.trim();
+    final enteredCode = InputDigitUtils.digitsOnly(_completionCodeController.text);
     if (enteredCode.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال الرمز أولاً')));
       return;
