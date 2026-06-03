@@ -302,11 +302,6 @@ class _AuthScreenState extends State<AuthScreen> {
     debugPrint('[LOGIN FLOW] input validated');
     debugPrint('[LOGIN FLOW] try start');
 
-    if (kIsWeb) {
-      _showMessage('تسجيل OTP المدمج متاح على Android/iOS فقط في هذا الإصدار.');
-      return;
-    }
-
     final normalizedPhone = IraqiPhoneUtils.normalize(_phoneController.text);
     debugPrint('[LOGIN INPUT] rawPhone=${_phoneController.text} countryCode=+964 normalizedPhone=$normalizedPhone role=$selectedRole');
     final isAdminOutletLogin = _isLogin &&
@@ -319,6 +314,10 @@ class _AuthScreenState extends State<AuthScreen> {
           MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
         );
       });
+      return;
+    }
+    if (kIsWeb) {
+      await _submitWeb(selectedRole: selectedRole, normalizedPhone: normalizedPhone);
       return;
     }
     if (mounted) setState(() => _isLoading = true);
@@ -463,6 +462,58 @@ class _AuthScreenState extends State<AuthScreen> {
       debugPrint('[LOGIN FLOW] controlled failure');
       _showMessage('حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.');
       _showDebugErrorDialog(e.toString());
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _submitWeb({
+    required String selectedRole,
+    required String normalizedPhone,
+  }) async {
+    if (mounted) setState(() => _isLoading = true);
+    try {
+      final profile = await _authService.loginOrRegisterWebWithPhonePassword(
+        role: selectedRole,
+        phoneNumber: normalizedPhone,
+        password: _passwordController.text,
+        isRegistration: !_isLogin,
+        fullName: _fullNameController.text,
+        governorate: _selectedGovernorate,
+        outletName: _outletNameController.text,
+        acceptedTerms: _acceptedTerms,
+        termsVersion: _termsVersion,
+        acceptedTermsItems: _termsForRole(selectedRole),
+      );
+      if (!mounted) return;
+      final isOutletRegistrationPending = !_isLogin &&
+          selectedRole == 'outlet' &&
+          (profile['approvalStatus'] ?? '').toString() == 'pending';
+      if (isOutletRegistrationPending) {
+        await FirebaseAuth.instance.signOut();
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => OutletApprovalPendingScreen(phoneNumber: normalizedPhone),
+          ),
+          (_) => false,
+        );
+        return;
+      }
+      _openPostAuthScreen(profile);
+    } on FirebaseAuthException catch (e) {
+      debugPrint('[WEB AUTH] error code: ${e.code}');
+      _showMessage(_authService.mapFirebaseAuthError(e));
+      _showDebugErrorDialog(e.toString());
+    } on FirebaseException catch (e) {
+      debugPrint('[WEB AUTH] firebase error: ${e.code}');
+      _showMessage('حدث خطأ في الخدمة. حاول مرة أخرى.');
+      _showDebugErrorDialog(e.toString());
+    } catch (e, stackTrace) {
+      debugPrint('[WEB AUTH] unexpected error: $e');
+      debugPrint('$stackTrace');
+      _showMessage('حدث خطأ أثناء فتح الحساب من الموقع. حاول مرة أخرى.');
+      _showDebugErrorDialog(e.toString());
+    } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }

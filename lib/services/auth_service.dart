@@ -32,6 +32,7 @@ class AuthService {
   static const _appReviewClientEmail = 'app.review.client@monfathak.local';
   static const _appReviewOutletEmail = 'app.review.outlet@monfathak.local';
   static const _appReviewAdminEmail = 'app.review.admin@monfathak.local';
+  static const _webAuthEmailDomain = 'monfathak.app';
 
   static String _appReviewEmailForRole(String role) {
     final normalizedRole = role == 'admin'
@@ -62,6 +63,15 @@ class AuthService {
     return isAppReviewPhoneInput(phoneNumber) && password.trim() == appReviewPassword;
   }
 
+  static String _webEmailForPhoneRole({
+    required String normalizedPhone,
+    required String role,
+  }) {
+    final digits = InputDigitUtils.digitsOnly(normalizedPhone);
+    final normalizedRole = role == 'outlet' ? 'outlet' : 'client';
+    return 'web.$normalizedRole.$digits@$_webAuthEmailDomain';
+  }
+
   String _hashPassword(String password) {
     return sha256.convert(utf8.encode(password.trim())).toString();
   }
@@ -87,6 +97,10 @@ class AuthService {
         return 'كلمة المرور ضعيفة. يجب أن تكون 6 أحرف على الأقل.';
       case 'wrong-password':
         return 'كلمة المرور غير صحيحة.';
+      case 'invalid-credential':
+        return 'رقم الهاتف أو كلمة المرور غير صحيحة.';
+      case 'email-already-in-use':
+        return 'هذا الحساب موجود مسبقاً. جرّب تسجيل الدخول.';
       case 'missing-user-doc':
         return 'الحساب غير موجود. يرجى إنشاء حساب جديد أولًا.';
       case 'role-mismatch':
@@ -192,6 +206,201 @@ class AuthService {
       role: role,
       normalizedPhone: normalizedPhone,
     );
+  }
+
+  Future<Map<String, dynamic>> loginOrRegisterWebWithPhonePassword({
+    required String role,
+    required String phoneNumber,
+    required String password,
+    required bool isRegistration,
+    required String fullName,
+    required String governorate,
+    String? outletName,
+    required bool acceptedTerms,
+    required String termsVersion,
+    required List<String> acceptedTermsItems,
+  }) async {
+    final normalizedRole = role == 'outlet' ? 'outlet' : 'client';
+    final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
+    final trimmedPassword = password.trim();
+    final passwordHash = _hashPassword(trimmedPassword);
+    final normalizedTermsVersion = termsVersion.trim();
+    final normalizedTermsItems = acceptedTermsItems
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+
+    if (trimmedPassword.length < 6) {
+      throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+    }
+    if (isRegistration &&
+        (!acceptedTerms || normalizedTermsVersion.isEmpty || normalizedTermsItems.isEmpty)) {
+      throw FirebaseAuthException(
+        code: 'terms-not-accepted',
+        message: 'يرجى الموافقة على الشروط والأحكام لإكمال التسجيل.',
+      );
+    }
+
+    final existingProfile = await _findProfileByPhoneCandidates(
+      normalizedPhone: normalizedPhone,
+      role: normalizedRole,
+    );
+    if (existingProfile != null) {
+      final existingRole = (existingProfile['role'] ?? '').toString();
+      if (existingRole.isNotEmpty && existingRole != normalizedRole) {
+        throw FirebaseAuthException(code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف.');
+      }
+      final savedHash = (existingProfile['passwordHash'] ?? '').toString().trim();
+      if (savedHash.isNotEmpty && savedHash != passwordHash) {
+        throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
+      }
+    } else if (!isRegistration) {
+      throw FirebaseAuthException(code: 'missing-user-doc', message: 'هذا الرقم غير مسجل بعد.');
+    }
+
+    final email = _webEmailForPhoneRole(
+      normalizedPhone: normalizedPhone,
+      role: normalizedRole,
+    );
+
+    try {
+      if (isRegistration) {
+        try {
+          await _auth.createUserWithEmailAndPassword(email: email, password: trimmedPassword);
+        } on FirebaseAuthException catch (error) {
+          if (error.code != 'email-already-in-use') rethrow;
+          await _auth.signInWithEmailAndPassword(email: email, password: trimmedPassword);
+        }
+      } else {
+        try {
+          await _auth.signInWithEmailAndPassword(email: email, password: trimmedPassword);
+        } on FirebaseAuthException catch (error) {
+          if (error.code != 'user-not-found' &&
+              error.code != 'invalid-credential' &&
+              error.code != 'wrong-password') {
+            rethrow;
+          }
+          if (existingProfile == null || (existingProfile['passwordHash'] ?? '').toString().trim() != passwordHash) {
+            throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
+          }
+          await _auth.createUserWithEmailAndPassword(email: email, password: trimmedPassword);
+        }
+      }
+    } on FirebaseAuthException catch (error) {
+      if (error.code == 'email-already-in-use') {
+        await _auth.signInWithEmailAndPassword(email: email, password: trimmedPassword);
+      } else {
+        rethrow;
+      }
+    }
+
+    final uid = _auth.currentUser?.uid;
+    if (uid == null || uid.trim().isEmpty) {
+      throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر فتح الحساب من الموقع.');
+    }
+
+    try {
+      await _migrateLegacyUidIfNeeded(
+        currentUid: uid,
+        normalizedPhone: normalizedPhone,
+        role: normalizedRole,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('[AuthService] web legacy migration skipped: $error');
+      debugPrint('$stackTrace');
+    }
+
+    final userDocRef = _firestore.collection('users').doc(uid);
+    final snap = await userDocRef.get().timeout(const Duration(seconds: 8));
+    final existingCurrent = snap.data();
+
+    if (existingCurrent != null && existingCurrent.isNotEmpty) {
+      final existingRole = (existingCurrent['role'] ?? '').toString();
+      if (existingRole.isNotEmpty && existingRole != normalizedRole) {
+        throw FirebaseAuthException(code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف.');
+      }
+      if (normalizedRole == 'outlet') {
+        final approvalStatus = (existingCurrent['approvalStatus'] ?? '').toString();
+        if (approvalStatus == 'pending') {
+          throw FirebaseAuthException(
+            code: 'outlet-pending-approval',
+            message: 'حساب المنفذ بانتظار موافقة الإدارة.',
+          );
+        }
+        if (approvalStatus == 'rejected') {
+          throw FirebaseAuthException(code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
+        }
+      }
+      final savedHash = (existingCurrent['passwordHash'] ?? '').toString().trim();
+      if (savedHash.isNotEmpty && savedHash != passwordHash) {
+        await _auth.signOut();
+        throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
+      }
+      await userDocRef.set({
+        'uid': uid,
+        'phoneNumber': normalizedPhone,
+        'passwordHash': passwordHash,
+        'webAuthEmail': email,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } else if (existingProfile != null) {
+      await userDocRef.set({
+        ...existingProfile,
+        'uid': uid,
+        'phoneNumber': normalizedPhone,
+        'passwordHash': passwordHash,
+        'webAuthEmail': email,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } else {
+      final payload = <String, dynamic>{
+        'uid': uid,
+        'fullName': fullName.trim(),
+        'role': normalizedRole,
+        'governorate': governorate.trim(),
+        'phoneNumber': normalizedPhone,
+        'passwordHash': passwordHash,
+        'webAuthEmail': email,
+        'termsAccepted': acceptedTerms,
+        'termsAcceptedAt': FieldValue.serverTimestamp(),
+        'termsVersion': normalizedTermsVersion,
+        'termsAcceptedRole': normalizedRole,
+        'termsAcceptedItems': normalizedTermsItems,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (normalizedRole == 'outlet') {
+        payload['outletName'] = (outletName ?? '').trim();
+        payload['approvalStatus'] = 'pending';
+        payload['approvalRequestedAt'] = FieldValue.serverTimestamp();
+        payload['approvalDecisionAt'] = null;
+        payload['approvedBy'] = '';
+      }
+
+      await userDocRef.set(payload, SetOptions(merge: true));
+
+      if (normalizedRole == 'outlet') {
+        await _firestore.collection('notifications').add({
+          'toUserId': 'admin',
+          'type': 'outlet_approval_request',
+          'title': 'طلب منفذ جديد',
+          'body': 'تم تقديم طلب جديد من منفذ: ${fullName.trim().isEmpty ? normalizedPhone : fullName.trim()}',
+          'requestUid': uid,
+          'requestPhone': normalizedPhone,
+          'isRead': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    await _safeRegisterDevice();
+    final fresh = await userDocRef.get().timeout(const Duration(seconds: 8));
+    final data = fresh.data();
+    if (data == null || data.isEmpty) {
+      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+    }
+    return data;
   }
 
   Future<void> assertLoginPasswordBeforeOtp({

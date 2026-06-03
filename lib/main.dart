@@ -12,6 +12,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'firebase_options.dart';
 import 'screens/admin_dashboard_screen.dart';
+import 'screens/app_version_gate.dart';
 import 'screens/app_review_access_screen.dart';
 import 'screens/home_shell_screen.dart';
 import 'screens/role_selection_screen.dart';
@@ -150,7 +151,10 @@ class MonfathakApp extends StatelessWidget {
         );
       },
       theme: AppTheme.light,
-      home: _FirebaseBootstrapper(firebaseInitFuture: firebaseInitFuture),
+      home: AppVersionGate(
+        firebaseInitFuture: firebaseInitFuture,
+        child: _FirebaseBootstrapper(firebaseInitFuture: firebaseInitFuture),
+      ),
     );
   }
 }
