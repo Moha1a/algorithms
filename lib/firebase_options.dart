@@ -22,12 +22,12 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyAt8R2iub5RaBG2vYnCT56zZGfcslEQ7U4',
+    apiKey: 'AIzaSyDTzOzJCTsGZBEriGQEOtU9218lenRT02I',
     appId: '1:1025525101614:web:08c4c874f05d1713cfdbbf',
     messagingSenderId: '1025525101614',
     projectId: 'qiqa-c17c2',
     authDomain: 'qiqa-c17c2.firebaseapp.com',
-    storageBucket: 'qiqa-c17c2.appspot.com',
+    storageBucket: 'qiqa-c17c2.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
@@ -61,20 +61,20 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyAt8R2iub5RaBG2vYnCT56zZGfcslEQ7U4',
+    apiKey: 'AIzaSyDTzOzJCTsGZBEriGQEOtU9218lenRT02I',
     appId: '1:1025525101614:web:08c4c874f05d1713cfdbbf',
     messagingSenderId: '1025525101614',
     projectId: 'qiqa-c17c2',
     authDomain: 'qiqa-c17c2.firebaseapp.com',
-    storageBucket: 'qiqa-c17c2.appspot.com',
+    storageBucket: 'qiqa-c17c2.firebasestorage.app',
   );
 
   static const FirebaseOptions linux = FirebaseOptions(
-    apiKey: 'AIzaSyAt8R2iub5RaBG2vYnCT56zZGfcslEQ7U4',
+    apiKey: 'AIzaSyDTzOzJCTsGZBEriGQEOtU9218lenRT02I',
     appId: '1:1025525101614:web:08c4c874f05d1713cfdbbf',
     messagingSenderId: '1025525101614',
     projectId: 'qiqa-c17c2',
     authDomain: 'qiqa-c17c2.firebaseapp.com',
-    storageBucket: 'qiqa-c17c2.appspot.com',
+    storageBucket: 'qiqa-c17c2.firebasestorage.app',
   );
 }
