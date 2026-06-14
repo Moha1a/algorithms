@@ -53,14 +53,16 @@ class AuthService {
 
   static bool isAppReviewPhoneInput(String phoneNumber) {
     final digits = InputDigitUtils.digitsOnly(phoneNumber);
-    return digits == appReviewPhone || IraqiPhoneUtils.normalize(phoneNumber) == _appReviewNormalizedPhone;
+    return digits == appReviewPhone ||
+        IraqiPhoneUtils.normalize(phoneNumber) == _appReviewNormalizedPhone;
   }
 
   static bool isAppReviewCredentials({
     required String phoneNumber,
     required String password,
   }) {
-    return isAppReviewPhoneInput(phoneNumber) && password.trim() == appReviewPassword;
+    return isAppReviewPhoneInput(phoneNumber) &&
+        password.trim() == appReviewPassword;
   }
 
   static String _webEmailForPhoneRole({
@@ -113,6 +115,14 @@ class AuthService {
         return 'تعذر التحقق الأمني. حاول مرة أخرى.';
       case 'app-not-authorized':
         return 'التطبيق غير مصرح لهذا المشروع.';
+      case 'operation-not-allowed':
+        return 'طريقة تسجيل الدخول غير مفعلة في Firebase. فعّل Phone و Email/Password من إعدادات Authentication.';
+      case 'unauthorized-domain':
+        return 'نطاق الموقع غير مصرح في Firebase Authentication. أضف رابط الموقع ضمن Authorized domains.';
+      case 'internal-error':
+        return 'تعذر إرسال رمز التحقق حالياً. تأكد من الاتصال وحاول مرة أخرى، وإذا استمرت المشكلة تواصل مع الدعم.';
+      case 'web-auth-timeout':
+        return 'تعذر فتح الحساب من الموقع حالياً. تحقق من إعدادات Firebase Auth وقواعد Firestore ثم حاول مرة أخرى.';
       case 'user-profile-load-failed':
         return 'تعذر التحقق من الحساب، حاول مرة أخرى';
       case 'preview-phone-auth-disabled':
@@ -124,7 +134,8 @@ class AuthService {
 
   Future<void> verifyPhoneNumber({
     required String phoneNumber,
-    required void Function(PhoneAuthCredential credential) verificationCompleted,
+    required void Function(PhoneAuthCredential credential)
+        verificationCompleted,
     required void Function(FirebaseAuthException exception) verificationFailed,
     required void Function(String verificationId, int? resendToken) codeSent,
     required void Function(String verificationId) codeAutoRetrievalTimeout,
@@ -136,9 +147,12 @@ class AuthService {
       final hasPlus = phoneNumber.startsWith('+');
       final plusDigitsOnly = RegExp(r'^\+\d+$').hasMatch(phoneNumber);
       debugPrint('[PHONE AUTH PREFLIGHT] platform=$defaultTargetPlatform');
-      debugPrint('[PHONE AUTH PREFLIGHT] appName=${firebaseApp.name} projectId=${firebaseApp.options.projectId} appId=${firebaseApp.options.appId}');
-      debugPrint('[PHONE AUTH PREFLIGHT] phone=$phoneNumber hasPlus=$hasPlus plusDigitsOnly=$plusDigitsOnly isLikelyE164=$isLikelyE164');
-      FirebaseCrashlytics.instance.log('[PHONE AUTH PREFLIGHT] phone=$phoneNumber role=unknown');
+      debugPrint(
+          '[PHONE AUTH PREFLIGHT] appName=${firebaseApp.name} projectId=${firebaseApp.options.projectId} appId=${firebaseApp.options.appId}');
+      debugPrint(
+          '[PHONE AUTH PREFLIGHT] phone=$phoneNumber hasPlus=$hasPlus plusDigitsOnly=$plusDigitsOnly isLikelyE164=$isLikelyE164');
+      FirebaseCrashlytics.instance
+          .log('[PHONE AUTH PREFLIGHT] phone=$phoneNumber role=unknown');
       if (!isLikelyE164) {
         throw FirebaseAuthException(
           code: 'invalid-phone-number',
@@ -153,12 +167,14 @@ class AuthService {
           try {
             verificationCompleted(credential);
           } catch (error, stackTrace) {
-            debugPrint('[OTP FLOW] verificationCompleted callback failed: $error');
+            debugPrint(
+                '[OTP FLOW] verificationCompleted callback failed: $error');
             debugPrint('$stackTrace');
           }
         },
         verificationFailed: (exception) {
           try {
+            _recordPhoneAuthFailure(exception, phoneNumber);
             verificationFailed(exception);
           } catch (error, stackTrace) {
             debugPrint('[OTP FLOW] verificationFailed callback failed: $error');
@@ -177,7 +193,8 @@ class AuthService {
           try {
             codeAutoRetrievalTimeout(verificationId);
           } catch (error, stackTrace) {
-            debugPrint('[OTP FLOW] codeAutoRetrievalTimeout callback failed: $error');
+            debugPrint(
+                '[OTP FLOW] codeAutoRetrievalTimeout callback failed: $error');
             debugPrint('$stackTrace');
           }
         },
@@ -191,8 +208,32 @@ class AuthService {
       debugPrint('$stackTrace');
       FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
       debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
+      throw FirebaseAuthException(
+          code: 'user-profile-load-failed',
+          message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
     }
+  }
+
+  void _recordPhoneAuthFailure(
+      FirebaseAuthException exception, String phoneNumber) {
+    final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
+    final phonePrefix = normalizedPhone.length >= 7
+        ? normalizedPhone.substring(0, 7)
+        : normalizedPhone;
+    final crashlytics = FirebaseCrashlytics.instance;
+
+    debugPrint(
+        '[PHONE AUTH FAILED] code=${exception.code} message=${exception.message ?? ''}');
+    crashlytics.log('phone_auth_failed code=${exception.code}');
+    crashlytics.setCustomKey('phone_auth_error_code', exception.code);
+    crashlytics.setCustomKey(
+        'phone_auth_error_message', exception.message ?? '');
+    crashlytics.setCustomKey(
+        'phone_auth_project_id', _auth.app.options.projectId);
+    crashlytics.setCustomKey('phone_auth_app_id', _auth.app.options.appId);
+    crashlytics.setCustomKey('phone_auth_platform', defaultTargetPlatform.name);
+    crashlytics.setCustomKey('phone_auth_phone_prefix', phonePrefix);
+    crashlytics.recordError(exception, StackTrace.current, fatal: false);
   }
 
   Future<Map<String, dynamic>> loginWithPhonePasswordPreview({
@@ -201,7 +242,8 @@ class AuthService {
     required String password,
   }) async {
     final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
-    await assertLoginPasswordBeforeOtp(phoneNumber: normalizedPhone, password: password, role: role);
+    await assertLoginPasswordBeforeOtp(
+        phoneNumber: normalizedPhone, password: password, role: role);
     return _resolveProfileForLogin(
       role: role,
       normalizedPhone: normalizedPhone,
@@ -231,31 +273,42 @@ class AuthService {
         .toList(growable: false);
 
     if (trimmedPassword.length < 6) {
-      throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      throw FirebaseAuthException(
+          code: 'weak-password',
+          message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
     }
     if (isRegistration &&
-        (!acceptedTerms || normalizedTermsVersion.isEmpty || normalizedTermsItems.isEmpty)) {
+        (!acceptedTerms ||
+            normalizedTermsVersion.isEmpty ||
+            normalizedTermsItems.isEmpty)) {
       throw FirebaseAuthException(
         code: 'terms-not-accepted',
         message: 'يرجى الموافقة على الشروط والأحكام لإكمال التسجيل.',
       );
     }
 
-    final existingProfile = await _findProfileByPhoneCandidates(
-      normalizedPhone: normalizedPhone,
-      role: normalizedRole,
-    );
+    Map<String, dynamic>? existingProfile;
+    if (!isRegistration) {
+      existingProfile = await _tryFindProfileByPhoneCandidatesFast(
+        normalizedPhone: normalizedPhone,
+        role: normalizedRole,
+      );
+    }
     if (existingProfile != null) {
       final existingRole = (existingProfile['role'] ?? '').toString();
       if (existingRole.isNotEmpty && existingRole != normalizedRole) {
-        throw FirebaseAuthException(code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف.');
+        throw FirebaseAuthException(
+            code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف.');
       }
-      final savedHash = (existingProfile['passwordHash'] ?? '').toString().trim();
+      final savedHash =
+          (existingProfile['passwordHash'] ?? '').toString().trim();
       if (savedHash.isNotEmpty && savedHash != passwordHash) {
-        throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
+        throw FirebaseAuthException(
+            code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
       }
     } else if (!isRegistration) {
-      throw FirebaseAuthException(code: 'missing-user-doc', message: 'هذا الرقم غير مسجل بعد.');
+      throw FirebaseAuthException(
+          code: 'missing-user-doc', message: 'هذا الرقم غير مسجل بعد.');
     }
 
     final email = _webEmailForPhoneRole(
@@ -266,29 +319,37 @@ class AuthService {
     try {
       if (isRegistration) {
         try {
-          await _auth.createUserWithEmailAndPassword(email: email, password: trimmedPassword);
+          await _auth.createUserWithEmailAndPassword(
+              email: email, password: trimmedPassword);
         } on FirebaseAuthException catch (error) {
           if (error.code != 'email-already-in-use') rethrow;
-          await _auth.signInWithEmailAndPassword(email: email, password: trimmedPassword);
+          await _auth.signInWithEmailAndPassword(
+              email: email, password: trimmedPassword);
         }
       } else {
         try {
-          await _auth.signInWithEmailAndPassword(email: email, password: trimmedPassword);
+          await _auth.signInWithEmailAndPassword(
+              email: email, password: trimmedPassword);
         } on FirebaseAuthException catch (error) {
           if (error.code != 'user-not-found' &&
               error.code != 'invalid-credential' &&
               error.code != 'wrong-password') {
             rethrow;
           }
-          if (existingProfile == null || (existingProfile['passwordHash'] ?? '').toString().trim() != passwordHash) {
-            throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
+          if (existingProfile == null ||
+              (existingProfile['passwordHash'] ?? '').toString().trim() !=
+                  passwordHash) {
+            throw FirebaseAuthException(
+                code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
           }
-          await _auth.createUserWithEmailAndPassword(email: email, password: trimmedPassword);
+          await _auth.createUserWithEmailAndPassword(
+              email: email, password: trimmedPassword);
         }
       }
     } on FirebaseAuthException catch (error) {
       if (error.code == 'email-already-in-use') {
-        await _auth.signInWithEmailAndPassword(email: email, password: trimmedPassword);
+        await _auth.signInWithEmailAndPassword(
+            email: email, password: trimmedPassword);
       } else {
         rethrow;
       }
@@ -296,7 +357,8 @@ class AuthService {
 
     final uid = _auth.currentUser?.uid;
     if (uid == null || uid.trim().isEmpty) {
-      throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر فتح الحساب من الموقع.');
+      throw FirebaseAuthException(
+          code: 'user-not-found', message: 'تعذر فتح الحساب من الموقع.');
     }
 
     try {
@@ -317,10 +379,12 @@ class AuthService {
     if (existingCurrent != null && existingCurrent.isNotEmpty) {
       final existingRole = (existingCurrent['role'] ?? '').toString();
       if (existingRole.isNotEmpty && existingRole != normalizedRole) {
-        throw FirebaseAuthException(code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف.');
+        throw FirebaseAuthException(
+            code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف.');
       }
       if (normalizedRole == 'outlet') {
-        final approvalStatus = (existingCurrent['approvalStatus'] ?? '').toString();
+        final approvalStatus =
+            (existingCurrent['approvalStatus'] ?? '').toString();
         if (approvalStatus == 'pending') {
           throw FirebaseAuthException(
             code: 'outlet-pending-approval',
@@ -328,13 +392,16 @@ class AuthService {
           );
         }
         if (approvalStatus == 'rejected') {
-          throw FirebaseAuthException(code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
+          throw FirebaseAuthException(
+              code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
         }
       }
-      final savedHash = (existingCurrent['passwordHash'] ?? '').toString().trim();
+      final savedHash =
+          (existingCurrent['passwordHash'] ?? '').toString().trim();
       if (savedHash.isNotEmpty && savedHash != passwordHash) {
         await _auth.signOut();
-        throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
+        throw FirebaseAuthException(
+            code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
       }
       await userDocRef.set({
         'uid': uid,
@@ -385,7 +452,8 @@ class AuthService {
           'toUserId': 'admin',
           'type': 'outlet_approval_request',
           'title': 'طلب منفذ جديد',
-          'body': 'تم تقديم طلب جديد من منفذ: ${fullName.trim().isEmpty ? normalizedPhone : fullName.trim()}',
+          'body':
+              'تم تقديم طلب جديد من منفذ: ${fullName.trim().isEmpty ? normalizedPhone : fullName.trim()}',
           'requestUid': uid,
           'requestPhone': normalizedPhone,
           'isRead': false,
@@ -398,7 +466,8 @@ class AuthService {
     final fresh = await userDocRef.get().timeout(const Duration(seconds: 8));
     final data = fresh.data();
     if (data == null || data.isEmpty) {
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+      throw FirebaseAuthException(
+          code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
     }
     return data;
   }
@@ -409,10 +478,13 @@ class AuthService {
     required String role,
   }) async {
     final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
-    debugPrint('login_precheck_start rawPhone=$phoneNumber normalizedPhone=$normalizedPhone role=$role');
+    debugPrint(
+        'login_precheck_start rawPhone=$phoneNumber normalizedPhone=$normalizedPhone role=$role');
     final pass = password.trim();
     if (pass.length < 6) {
-      throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      throw FirebaseAuthException(
+          code: 'weak-password',
+          message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
     }
 
     final profile = await _resolveProfileForLogin(
@@ -421,15 +493,19 @@ class AuthService {
     );
     final existingRole = (profile['role'] ?? '').toString();
     if (existingRole.isNotEmpty && existingRole != role) {
-      throw FirebaseAuthException(code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف.');
+      throw FirebaseAuthException(
+          code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف.');
     }
     if (role == 'outlet') {
       final approvalStatus = (profile['approvalStatus'] ?? '').toString();
       if (approvalStatus == 'pending') {
-        throw FirebaseAuthException(code: 'outlet-pending-approval', message: 'حساب المنفذ بانتظار موافقة الإدارة.');
+        throw FirebaseAuthException(
+            code: 'outlet-pending-approval',
+            message: 'حساب المنفذ بانتظار موافقة الإدارة.');
       }
       if (approvalStatus == 'rejected') {
-        throw FirebaseAuthException(code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
+        throw FirebaseAuthException(
+            code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
       }
     }
 
@@ -440,7 +516,8 @@ class AuthService {
     final enteredHash = _hashPassword(pass).trim();
     if (savedHash != enteredHash) {
       debugPrint('password_check_failure role=$role');
-      throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
+      throw FirebaseAuthException(
+          code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
     }
     debugPrint('password_check_success role=$role');
   }
@@ -468,7 +545,9 @@ class AuthService {
           .where((item) => item.isNotEmpty)
           .toList(growable: false);
       if (trimmedPassword.length < 6) {
-        throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+        throw FirebaseAuthException(
+            code: 'weak-password',
+            message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
       }
 
       if (isRegistration &&
@@ -485,7 +564,8 @@ class AuthService {
       debugPrint('[LOGIN FLOW] credential sign-in success');
       final uid = userCredential.user?.uid;
       if (uid == null) {
-        throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر تسجيل الدخول');
+        throw FirebaseAuthException(
+            code: 'user-not-found', message: 'تعذر تسجيل الدخول');
       }
 
       try {
@@ -495,7 +575,8 @@ class AuthService {
           role: role,
         );
       } catch (error, stackTrace) {
-        debugPrint('[AuthService] legacy migration skipped due to error: $error');
+        debugPrint(
+            '[AuthService] legacy migration skipped due to error: $error');
         debugPrint('$stackTrace');
       }
 
@@ -507,7 +588,9 @@ class AuthService {
       } catch (error, stackTrace) {
         debugPrint('PROFILE_LOAD_FAILED: $error');
         debugPrint('$stackTrace');
-        throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+        throw FirebaseAuthException(
+            code: 'user-profile-load-failed',
+            message: 'تعذر تحميل الملف الشخصي');
       }
       final passwordHash = _hashPassword(trimmedPassword);
 
@@ -515,7 +598,8 @@ class AuthService {
         final profile = snap.data()!;
         final existingRole = (profile['role'] ?? '').toString();
         if (existingRole.isNotEmpty && existingRole != role) {
-          throw FirebaseAuthException(code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف');
+          throw FirebaseAuthException(
+              code: 'role-mismatch', message: 'هذا الحساب مسجل بدور مختلف');
         }
         if (role == 'outlet') {
           final approvalStatus = (profile['approvalStatus'] ?? '').toString();
@@ -526,7 +610,8 @@ class AuthService {
             );
           }
           if (approvalStatus == 'rejected') {
-            throw FirebaseAuthException(code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
+            throw FirebaseAuthException(
+                code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
           }
         }
 
@@ -538,9 +623,11 @@ class AuthService {
           }, SetOptions(merge: true));
           savedHash = passwordHash;
         }
-        if (savedHash.trim().isNotEmpty && savedHash.trim() != passwordHash.trim()) {
+        if (savedHash.trim().isNotEmpty &&
+            savedHash.trim() != passwordHash.trim()) {
           await _auth.signOut();
-          throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة');
+          throw FirebaseAuthException(
+              code: 'wrong-password', message: 'كلمة المرور غير صحيحة');
         }
 
         await userDocRef.set({
@@ -550,11 +637,14 @@ class AuthService {
         }, SetOptions(merge: true));
 
         await _safeRegisterDevice();
-        final fresh = await userDocRef.get().timeout(const Duration(seconds: 8));
+        final fresh =
+            await userDocRef.get().timeout(const Duration(seconds: 8));
         final freshData = fresh.data();
         if (freshData == null) {
           debugPrint('PROFILE_LOAD_FAILED: null profile after login');
-          throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+          throw FirebaseAuthException(
+              code: 'user-profile-load-failed',
+              message: 'تعذر تحميل الملف الشخصي');
         }
         debugPrint('[PROFILE LOAD] success');
         return freshData;
@@ -597,7 +687,8 @@ class AuthService {
           'toUserId': 'admin',
           'type': 'outlet_approval_request',
           'title': 'طلب منفذ جديد',
-          'body': 'تم تقديم طلب جديد من منفذ: ${fullName.trim().isEmpty ? normalizedPhone : fullName.trim()}',
+          'body':
+              'تم تقديم طلب جديد من منفذ: ${fullName.trim().isEmpty ? normalizedPhone : fullName.trim()}',
           'requestUid': uid,
           'requestPhone': normalizedPhone,
           'isRead': false,
@@ -610,7 +701,9 @@ class AuthService {
       final freshData = fresh.data();
       if (freshData == null) {
         debugPrint('PROFILE_LOAD_FAILED: null profile after registration');
-        throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+        throw FirebaseAuthException(
+            code: 'user-profile-load-failed',
+            message: 'تعذر تحميل الملف الشخصي');
       }
       debugPrint('[PROFILE LOAD] success');
       return freshData;
@@ -619,19 +712,23 @@ class AuthService {
     } on FirebaseException catch (error, stackTrace) {
       debugPrint('PROFILE_LOAD_FAILED: $error');
       debugPrint('$stackTrace');
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+      throw FirebaseAuthException(
+          code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
     } on PlatformException catch (error, stackTrace) {
       debugPrint('PROFILE_LOAD_FAILED: $error');
       debugPrint('$stackTrace');
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+      throw FirebaseAuthException(
+          code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
     } on FormatException catch (error, stackTrace) {
       debugPrint('PROFILE_LOAD_FAILED: $error');
       debugPrint('$stackTrace');
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+      throw FirebaseAuthException(
+          code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
     } catch (error, stackTrace) {
       debugPrint('PROFILE_LOAD_FAILED: $error');
       debugPrint('$stackTrace');
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
+      throw FirebaseAuthException(
+          code: 'user-profile-load-failed', message: 'تعذر تحميل الملف الشخصي');
     }
   }
 
@@ -641,19 +738,23 @@ class AuthService {
   }) async {
     final trimmed = newPassword.trim();
     if (trimmed.length < 6) {
-      throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      throw FirebaseAuthException(
+          code: 'weak-password',
+          message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
     }
 
     final userCredential = await _auth.signInWithCredential(credential);
     final uid = userCredential.user?.uid;
     if (uid == null) {
-      throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر إعادة تعيين كلمة المرور');
+      throw FirebaseAuthException(
+          code: 'user-not-found', message: 'تعذر إعادة تعيين كلمة المرور');
     }
 
     final userRef = _firestore.collection('users').doc(uid);
     final snap = await userRef.get();
     if (!snap.exists) {
-      throw FirebaseAuthException(code: 'missing-user-doc', message: 'الحساب غير موجود');
+      throw FirebaseAuthException(
+          code: 'missing-user-doc', message: 'الحساب غير موجود');
     }
 
     await userRef.set({
@@ -670,17 +771,21 @@ class AuthService {
   }) async {
     final trimmed = newPassword.trim();
     if (trimmed.length < 6) {
-      throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      throw FirebaseAuthException(
+          code: 'weak-password',
+          message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
     }
     final cleanUid = uid.trim();
     if (cleanUid.isEmpty) {
-      throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر تحديد الحساب');
+      throw FirebaseAuthException(
+          code: 'user-not-found', message: 'تعذر تحديد الحساب');
     }
 
     final userRef = _firestore.collection('users').doc(cleanUid);
     final snap = await userRef.get();
     if (!snap.exists) {
-      throw FirebaseAuthException(code: 'missing-user-doc', message: 'الحساب غير موجود');
+      throw FirebaseAuthException(
+          code: 'missing-user-doc', message: 'الحساب غير موجود');
     }
 
     await userRef.set({
@@ -689,20 +794,24 @@ class AuthService {
     }, SetOptions(merge: true));
   }
 
-  Future<Map<String, dynamic>> loginAsTestAccount({required String role}) async {
+  Future<Map<String, dynamic>> loginAsTestAccount(
+      {required String role}) async {
     final isOutlet = role == 'outlet';
     final email = isOutlet ? _testOutletEmail : _testClientEmail;
 
     try {
-      await _auth.signInWithEmailAndPassword(email: email, password: _testPassword);
+      await _auth.signInWithEmailAndPassword(
+          email: email, password: _testPassword);
     } on FirebaseAuthException catch (e) {
       if (e.code != 'user-not-found' && e.code != 'invalid-credential') rethrow;
-      await _auth.createUserWithEmailAndPassword(email: email, password: _testPassword);
+      await _auth.createUserWithEmailAndPassword(
+          email: email, password: _testPassword);
     }
 
     final uid = _auth.currentUser?.uid;
     if (uid == null) {
-      throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر تسجيل دخول حساب الاختبار');
+      throw FirebaseAuthException(
+          code: 'user-not-found', message: 'تعذر تسجيل دخول حساب الاختبار');
     }
 
     await _firestore.collection('users').doc(uid).set({
@@ -728,7 +837,8 @@ class AuthService {
     required String password,
   }) async {
     if (!isAppReviewCredentials(phoneNumber: phoneNumber, password: password)) {
-      throw FirebaseAuthException(code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
+      throw FirebaseAuthException(
+          code: 'wrong-password', message: 'كلمة المرور غير صحيحة.');
     }
 
     final normalizedRole = role == 'admin'
@@ -741,15 +851,18 @@ class AuthService {
     final email = _appReviewEmailForRole(normalizedRole);
 
     try {
-      await _auth.signInWithEmailAndPassword(email: email, password: appReviewPassword);
+      await _auth.signInWithEmailAndPassword(
+          email: email, password: appReviewPassword);
     } on FirebaseAuthException catch (e) {
       if (e.code != 'user-not-found' && e.code != 'invalid-credential') rethrow;
-      await _auth.createUserWithEmailAndPassword(email: email, password: appReviewPassword);
+      await _auth.createUserWithEmailAndPassword(
+          email: email, password: appReviewPassword);
     }
 
     final uid = _auth.currentUser?.uid;
     if (uid == null) {
-      throw FirebaseAuthException(code: 'user-not-found', message: 'تعذر فتح حساب المراجعة.');
+      throw FirebaseAuthException(
+          code: 'user-not-found', message: 'تعذر فتح حساب المراجعة.');
     }
 
     final profile = <String, dynamic>{
@@ -782,7 +895,10 @@ class AuthService {
       });
     }
 
-    await _firestore.collection('users').doc(uid).set(profile, SetOptions(merge: true));
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .set(profile, SetOptions(merge: true));
 
     await _safeRegisterDevice();
     final fresh = await _firestore.collection('users').doc(uid).get();
@@ -791,8 +907,23 @@ class AuthService {
 
   Future<void> _safeRegisterDevice() async {
     debugPrint('DEVICE_REGISTRATION_START');
+    if (kIsWeb) {
+      unawaited(
+        DeviceRegistrationService.instance
+            .registerAndListenTokenRefresh()
+            .timeout(const Duration(seconds: 8))
+            .catchError((Object error, StackTrace stackTrace) {
+          debugPrint('DEVICE_REGISTRATION_WEB_BACKGROUND_IGNORED: $error');
+          debugPrint('$stackTrace');
+        }),
+      );
+      return;
+    }
+
     try {
-      await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
+      await DeviceRegistrationService.instance
+          .registerAndListenTokenRefresh()
+          .timeout(const Duration(seconds: 12));
     } catch (error, stackTrace) {
       debugPrint('DEVICE_REGISTRATION_FAILED_IGNORED: $error');
       debugPrint('$stackTrace');
@@ -803,7 +934,8 @@ class AuthService {
     final uid = _auth.currentUser?.uid;
     if (uid != null && uid.trim().isNotEmpty) {
       try {
-        await DeviceRegistrationService.instance.unregisterCurrentDeviceForUser(uid);
+        await DeviceRegistrationService.instance
+            .unregisterCurrentDeviceForUser(uid);
       } catch (_) {}
     }
 
@@ -835,10 +967,12 @@ class AuthService {
     await _reauthenticateAppReviewUserIfNeeded(user);
 
     try {
-      await DeviceRegistrationService.instance.unregisterCurrentDeviceForUser(uid);
+      await DeviceRegistrationService.instance
+          .unregisterCurrentDeviceForUser(uid);
       await DeviceRegistrationService.instance.stopTokenRefreshListener();
     } catch (error, stackTrace) {
-      debugPrint('[AuthService] account deletion device cleanup ignored: $error');
+      debugPrint(
+          '[AuthService] account deletion device cleanup ignored: $error');
       debugPrint('$stackTrace');
       crashlytics.recordError(error, stackTrace, fatal: false);
     }
@@ -883,7 +1017,8 @@ class AuthService {
           password: appReviewPassword,
         ),
       );
-      debugPrint('[AuthService] app review user reauthenticated before deletion');
+      debugPrint(
+          '[AuthService] app review user reauthenticated before deletion');
     } catch (error, stackTrace) {
       debugPrint('[AuthService] app review reauthentication failed: $error');
       debugPrint('$stackTrace');
@@ -896,16 +1031,25 @@ class AuthService {
     final userRef = _firestore.collection('users').doc(uid);
     await _deleteCollectionDocs(userRef.collection('devices'));
     await _deleteCollectionDocs(userRef.collection('fcmTokens'));
-    await _deleteCollectionDocs(_firestore.collection('support_general').doc(uid).collection('messages'));
-    await _safeDeleteDocument(_firestore.collection('support_general').doc(uid));
+    await _deleteCollectionDocs(_firestore
+        .collection('support_general')
+        .doc(uid)
+        .collection('messages'));
+    await _safeDeleteDocument(
+        _firestore.collection('support_general').doc(uid));
   }
 
   Future<void> _deleteAccountNotificationsAndRatings(String uid) async {
-    await _deleteMatchingDocs(collection: 'notifications', field: 'toUserId', value: uid);
-    await _deleteMatchingDocs(collection: 'notifications', field: 'actorId', value: uid);
-    await _deleteMatchingDocs(collection: 'admin_inbox', field: 'toUserId', value: uid);
-    await _deleteMatchingDocs(collection: 'ratings', field: 'fromUserId', value: uid);
-    await _deleteMatchingDocs(collection: 'ratings', field: 'toUserId', value: uid);
+    await _deleteMatchingDocs(
+        collection: 'notifications', field: 'toUserId', value: uid);
+    await _deleteMatchingDocs(
+        collection: 'notifications', field: 'actorId', value: uid);
+    await _deleteMatchingDocs(
+        collection: 'admin_inbox', field: 'toUserId', value: uid);
+    await _deleteMatchingDocs(
+        collection: 'ratings', field: 'fromUserId', value: uid);
+    await _deleteMatchingDocs(
+        collection: 'ratings', field: 'toUserId', value: uid);
   }
 
   Future<void> _cancelActiveBookingsForDeletedAccount(String uid) async {
@@ -964,7 +1108,8 @@ class AuthService {
     try {
       await userRef.delete();
     } on FirebaseException catch (error, stackTrace) {
-      debugPrint('[AuthService] user doc delete failed, anonymizing instead: $error');
+      debugPrint(
+          '[AuthService] user doc delete failed, anonymizing instead: $error');
       debugPrint('$stackTrace');
       FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
       await userRef.set({
@@ -983,9 +1128,11 @@ class AuthService {
     }
   }
 
-  Future<void> _deleteCollectionDocs(CollectionReference<Map<String, dynamic>> ref) async {
+  Future<void> _deleteCollectionDocs(
+      CollectionReference<Map<String, dynamic>> ref) async {
     while (true) {
-      final snap = await ref.limit(200).get().timeout(const Duration(seconds: 12));
+      final snap =
+          await ref.limit(200).get().timeout(const Duration(seconds: 12));
       if (snap.docs.isEmpty) return;
       final batch = _firestore.batch();
       for (final doc in snap.docs) {
@@ -1016,7 +1163,8 @@ class AuthService {
     }
   }
 
-  Future<void> _safeDeleteDocument(DocumentReference<Map<String, dynamic>> ref) async {
+  Future<void> _safeDeleteDocument(
+      DocumentReference<Map<String, dynamic>> ref) async {
     try {
       await ref.delete();
     } catch (_) {}
@@ -1027,7 +1175,9 @@ class AuthService {
     required String normalizedPhone,
     required String role,
   }) async {
-    if (currentUid.trim().isEmpty || normalizedPhone.trim().isEmpty || role.trim().isEmpty) return;
+    if (currentUid.trim().isEmpty ||
+        normalizedPhone.trim().isEmpty ||
+        role.trim().isEmpty) return;
 
     final usersSnap = await _firestore
         .collection('users')
@@ -1036,7 +1186,9 @@ class AuthService {
         .limit(20)
         .get();
 
-    final legacyDocs = usersSnap.docs.where((doc) => doc.id != currentUid).toList(growable: false);
+    final legacyDocs = usersSnap.docs
+        .where((doc) => doc.id != currentUid)
+        .toList(growable: false);
     if (legacyDocs.isEmpty) return;
 
     final legacyDoc = legacyDocs.first;
@@ -1063,8 +1215,10 @@ class AuthService {
       for (final key in importantKeys) {
         final currentVal = currentData[key];
         final legacyVal = legacyData[key];
-        final currentHasValue = currentVal != null && currentVal.toString().trim().isNotEmpty;
-        final legacyHasValue = legacyVal != null && legacyVal.toString().trim().isNotEmpty;
+        final currentHasValue =
+            currentVal != null && currentVal.toString().trim().isNotEmpty;
+        final legacyHasValue =
+            legacyVal != null && legacyVal.toString().trim().isNotEmpty;
         if (!currentHasValue && legacyHasValue) {
           merged[key] = legacyVal;
         }
@@ -1073,11 +1227,15 @@ class AuthService {
       final legacyUids = <String>{legacyUid};
       final currentLegacy = currentData['legacyUids'];
       if (currentLegacy is List) {
-        legacyUids.addAll(currentLegacy.map((e) => e.toString()).where((e) => e.trim().isNotEmpty));
+        legacyUids.addAll(currentLegacy
+            .map((e) => e.toString())
+            .where((e) => e.trim().isNotEmpty));
       }
       final legacyLegacy = legacyData['legacyUids'];
       if (legacyLegacy is List) {
-        legacyUids.addAll(legacyLegacy.map((e) => e.toString()).where((e) => e.trim().isNotEmpty));
+        legacyUids.addAll(legacyLegacy
+            .map((e) => e.toString())
+            .where((e) => e.trim().isNotEmpty));
       }
 
       merged['uid'] = currentUid;
@@ -1088,15 +1246,18 @@ class AuthService {
       merged['updatedAt'] = FieldValue.serverTimestamp();
 
       tx.set(currentRef, merged, SetOptions(merge: true));
-      tx.set(legacyRef, {
-        'uid': legacyUid,
-        'phoneNumber': normalizedPhone,
-        'role': role,
-        'migratedToUid': currentUid,
-        'migratedAt': FieldValue.serverTimestamp(),
-        'active': false,
-        'legacyOf': currentUid,
-      }, SetOptions(merge: true));
+      tx.set(
+          legacyRef,
+          {
+            'uid': legacyUid,
+            'phoneNumber': normalizedPhone,
+            'role': role,
+            'migratedToUid': currentUid,
+            'migratedAt': FieldValue.serverTimestamp(),
+            'active': false,
+            'legacyOf': currentUid,
+          },
+          SetOptions(merge: true));
     });
 
     await _migrateLegacyIdentityReferences(
@@ -1109,25 +1270,46 @@ class AuthService {
       currentUid: currentUid,
     );
 
-    debugPrint('[AuthService] legacy UID migration done old=$legacyUid new=$currentUid role=$role');
+    debugPrint(
+        '[AuthService] legacy UID migration done old=$legacyUid new=$currentUid role=$role');
   }
 
   Future<void> _migrateLegacyIdentityReferences({
     required String legacyUid,
     required String currentUid,
   }) async {
-    if (legacyUid.trim().isEmpty || currentUid.trim().isEmpty || legacyUid == currentUid) return;
+    if (legacyUid.trim().isEmpty ||
+        currentUid.trim().isEmpty ||
+        legacyUid == currentUid) return;
 
-    await _replaceBookingsUidField(field: 'clientId', legacyUid: legacyUid, currentUid: currentUid);
-    await _replaceBookingsUidField(field: 'createdById', legacyUid: legacyUid, currentUid: currentUid);
-    await _replaceBookingsUidField(field: 'outletId', legacyUid: legacyUid, currentUid: currentUid);
-    await _replaceBookingsUidField(field: 'cancelledBy', legacyUid: legacyUid, currentUid: currentUid);
-    await _replaceBookingsUidField(field: 'completedBy', legacyUid: legacyUid, currentUid: currentUid);
-    await _replaceBookingsUidField(field: 'arrivalMarkedBy', legacyUid: legacyUid, currentUid: currentUid);
+    await _replaceBookingsUidField(
+        field: 'clientId', legacyUid: legacyUid, currentUid: currentUid);
+    await _replaceBookingsUidField(
+        field: 'createdById', legacyUid: legacyUid, currentUid: currentUid);
+    await _replaceBookingsUidField(
+        field: 'outletId', legacyUid: legacyUid, currentUid: currentUid);
+    await _replaceBookingsUidField(
+        field: 'cancelledBy', legacyUid: legacyUid, currentUid: currentUid);
+    await _replaceBookingsUidField(
+        field: 'completedBy', legacyUid: legacyUid, currentUid: currentUid);
+    await _replaceBookingsUidField(
+        field: 'arrivalMarkedBy', legacyUid: legacyUid, currentUid: currentUid);
 
-    await _replaceGenericUidField(collection: 'notifications', field: 'toUserId', legacyUid: legacyUid, currentUid: currentUid);
-    await _replaceGenericUidField(collection: 'notifications', field: 'actorId', legacyUid: legacyUid, currentUid: currentUid);
-    await _replaceGenericUidField(collection: 'admin_inbox', field: 'toUserId', legacyUid: legacyUid, currentUid: currentUid);
+    await _replaceGenericUidField(
+        collection: 'notifications',
+        field: 'toUserId',
+        legacyUid: legacyUid,
+        currentUid: currentUid);
+    await _replaceGenericUidField(
+        collection: 'notifications',
+        field: 'actorId',
+        legacyUid: legacyUid,
+        currentUid: currentUid);
+    await _replaceGenericUidField(
+        collection: 'admin_inbox',
+        field: 'toUserId',
+        legacyUid: legacyUid,
+        currentUid: currentUid);
 
     await _replaceCollectionGroupUidField(
       collectionId: 'messages',
@@ -1142,7 +1324,8 @@ class AuthService {
       currentUid: currentUid,
     );
 
-    await _migrateBookingProposalsAndChatSeen(legacyUid: legacyUid, currentUid: currentUid);
+    await _migrateBookingProposalsAndChatSeen(
+        legacyUid: legacyUid, currentUid: currentUid);
   }
 
   Future<void> _replaceBookingsUidField({
@@ -1151,7 +1334,11 @@ class AuthService {
     required String currentUid,
   }) async {
     while (true) {
-      final snap = await _firestore.collection('bookings').where(field, isEqualTo: legacyUid).limit(400).get();
+      final snap = await _firestore
+          .collection('bookings')
+          .where(field, isEqualTo: legacyUid)
+          .limit(400)
+          .get();
       if (snap.docs.isEmpty) return;
       final batch = _firestore.batch();
       for (final doc in snap.docs) {
@@ -1168,7 +1355,11 @@ class AuthService {
     required String currentUid,
   }) async {
     while (true) {
-      final snap = await _firestore.collection(collection).where(field, isEqualTo: legacyUid).limit(400).get();
+      final snap = await _firestore
+          .collection(collection)
+          .where(field, isEqualTo: legacyUid)
+          .limit(400)
+          .get();
       if (snap.docs.isEmpty) return;
       final batch = _firestore.batch();
       for (final doc in snap.docs) {
@@ -1185,7 +1376,11 @@ class AuthService {
     required String currentUid,
   }) async {
     while (true) {
-      final snap = await _firestore.collectionGroup(collectionId).where(field, isEqualTo: legacyUid).limit(400).get();
+      final snap = await _firestore
+          .collectionGroup(collectionId)
+          .where(field, isEqualTo: legacyUid)
+          .limit(400)
+          .get();
       if (snap.docs.isEmpty) return;
       final batch = _firestore.batch();
       for (final doc in snap.docs) {
@@ -1201,7 +1396,10 @@ class AuthService {
   }) async {
     QueryDocumentSnapshot<Map<String, dynamic>>? lastDoc;
     while (true) {
-      Query<Map<String, dynamic>> query = _firestore.collection('bookings').orderBy(FieldPath.documentId).limit(400);
+      Query<Map<String, dynamic>> query = _firestore
+          .collection('bookings')
+          .orderBy(FieldPath.documentId)
+          .limit(400);
       if (lastDoc != null) {
         query = query.startAfterDocument(lastDoc);
       }
@@ -1260,21 +1458,33 @@ class AuthService {
   }) async {
     if (legacyUid == currentUid) return;
 
-    final legacyDevices = await _firestore.collection('users').doc(legacyUid).collection('devices').get();
-    final legacyFcmTokens = await _firestore.collection('users').doc(legacyUid).collection('fcmTokens').get();
-    final targetDevicesRef = _firestore.collection('users').doc(currentUid).collection('devices');
+    final legacyDevices = await _firestore
+        .collection('users')
+        .doc(legacyUid)
+        .collection('devices')
+        .get();
+    final legacyFcmTokens = await _firestore
+        .collection('users')
+        .doc(legacyUid)
+        .collection('fcmTokens')
+        .get();
+    final targetDevicesRef =
+        _firestore.collection('users').doc(currentUid).collection('devices');
 
     if (legacyDevices.docs.isNotEmpty) {
       final batch = _firestore.batch();
       for (final doc in legacyDevices.docs) {
         final token = (doc.data()['token'] ?? '').toString().trim();
         if (token.isNotEmpty) {
-          batch.set(targetDevicesRef.doc(doc.id), {
-            ...doc.data(),
-            'token': token,
-            'uid': currentUid,
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          batch.set(
+              targetDevicesRef.doc(doc.id),
+              {
+                ...doc.data(),
+                'token': token,
+                'uid': currentUid,
+                'updatedAt': FieldValue.serverTimestamp(),
+              },
+              SetOptions(merge: true));
         }
         batch.delete(doc.reference);
       }
@@ -1302,11 +1512,14 @@ class AuthService {
     final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
     final trimmedPassword = password.trim();
     if (trimmedPassword.length < 6) {
-      throw FirebaseAuthException(code: 'weak-password', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      throw FirebaseAuthException(
+          code: 'weak-password',
+          message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
     }
 
     if (!isRegistration) {
-      return loginWithPhonePasswordPreview(role: role, phoneNumber: normalizedPhone, password: trimmedPassword);
+      return loginWithPhonePasswordPreview(
+          role: role, phoneNumber: normalizedPhone, password: trimmedPassword);
     }
 
     final existing = await _firestore
@@ -1346,13 +1559,18 @@ class AuthService {
 
     final canWriteProtectedData = _auth.currentUser != null;
     if (!canWriteProtectedData) {
-      debugPrint('[AuthService] preview registration write skipped: unauthenticated');
+      debugPrint(
+          '[AuthService] preview registration write skipped: unauthenticated');
       return profile;
     }
 
     try {
-      await _firestore.collection('users').doc(generatedUid).set(profile, SetOptions(merge: true));
-      final fresh = await _firestore.collection('users').doc(generatedUid).get();
+      await _firestore
+          .collection('users')
+          .doc(generatedUid)
+          .set(profile, SetOptions(merge: true));
+      final fresh =
+          await _firestore.collection('users').doc(generatedUid).get();
       return fresh.data() ?? profile;
     } catch (error, stackTrace) {
       debugPrint('[AuthService] preview registration write skipped: $error');
@@ -1368,14 +1586,19 @@ class AuthService {
     debugPrint('PROFILE_RESOLVE_START');
     final currentUser = _auth.currentUser;
     final currentUid = currentUser?.uid ?? '';
-    final currentPhone = IraqiPhoneUtils.normalize(currentUser?.phoneNumber ?? normalizedPhone);
+    final currentPhone =
+        IraqiPhoneUtils.normalize(currentUser?.phoneNumber ?? normalizedPhone);
     debugPrint('CURRENT_USER_UID: ${currentUid.isEmpty ? 'null' : currentUid}');
     debugPrint('CURRENT_USER_PHONE: $currentPhone');
 
     if (currentUid.isNotEmpty) {
       debugPrint('USER_DOC_BY_UID_START');
       try {
-        final byUid = await _firestore.collection('users').doc(currentUid).get().timeout(const Duration(seconds: 8));
+        final byUid = await _firestore
+            .collection('users')
+            .doc(currentUid)
+            .get()
+            .timeout(const Duration(seconds: 8));
         final data = byUid.data();
         if (byUid.exists && data != null && data.isNotEmpty) {
           debugPrint('USER_DOC_BY_UID_FOUND');
@@ -1384,10 +1607,14 @@ class AuthService {
         debugPrint('USER_DOC_BY_UID_MISSING');
       } on TimeoutException catch (error) {
         debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
-        throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
+        throw FirebaseAuthException(
+            code: 'user-profile-load-failed',
+            message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
       } on FirebaseException catch (error) {
         debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
-        throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
+        throw FirebaseAuthException(
+            code: 'user-profile-load-failed',
+            message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
       } catch (error) {
         debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
       }
@@ -1404,18 +1631,25 @@ class AuthService {
         return byPhone;
       }
       debugPrint('USER_DOC_BY_PHONE_QUERY_MISSING');
-      throw FirebaseAuthException(code: 'missing-user-doc', message: 'هذا الرقم غير مسجل بعد.');
+      throw FirebaseAuthException(
+          code: 'missing-user-doc', message: 'هذا الرقم غير مسجل بعد.');
     } on FirebaseAuthException {
       rethrow;
     } on TimeoutException catch (error) {
       debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
+      throw FirebaseAuthException(
+          code: 'user-profile-load-failed',
+          message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
     } on FirebaseException catch (error) {
       debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
+      throw FirebaseAuthException(
+          code: 'user-profile-load-failed',
+          message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
     } catch (error) {
       debugPrint('PROFILE_RESOLVE_FAILED_CONTROLLED: $error');
-      throw FirebaseAuthException(code: 'user-profile-load-failed', message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
+      throw FirebaseAuthException(
+          code: 'user-profile-load-failed',
+          message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
     }
   }
 
@@ -1437,13 +1671,39 @@ class AuthService {
     }.where((e) => e.trim().isNotEmpty).toSet();
   }
 
+  Future<Map<String, dynamic>?> _tryFindProfileByPhoneCandidatesFast({
+    required String normalizedPhone,
+    required String role,
+  }) async {
+    try {
+      return await _findProfileByPhoneCandidates(
+        normalizedPhone: normalizedPhone,
+        role: role,
+      ).timeout(const Duration(seconds: 6));
+    } on TimeoutException catch (error) {
+      debugPrint('[LOGIN LOOKUP] skipped after timeout: $error');
+      return null;
+    } on FirebaseException catch (error, stackTrace) {
+      debugPrint('[LOGIN LOOKUP] skipped due to firebase error: ${error.code}');
+      debugPrint('$stackTrace');
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+      return null;
+    } catch (error, stackTrace) {
+      debugPrint('[LOGIN LOOKUP] skipped due to error: $error');
+      debugPrint('$stackTrace');
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>?> _findProfileByPhoneCandidates({
     required String normalizedPhone,
     required String role,
   }) async {
-    final candidates = _phoneCandidates(normalizedPhone).toList(growable: false);
+    final candidates =
+        _phoneCandidates(normalizedPhone).toList(growable: false);
     const fields = ['phoneNumber', 'phone', 'normalizedPhone', 'mobile'];
-    debugPrint('[LOGIN LOOKUP] role=$role normalized=$normalizedPhone candidates=$candidates');
+    debugPrint(
+        '[LOGIN LOOKUP] role=$role normalized=$normalizedPhone candidates=$candidates');
 
     for (final field in fields) {
       for (final value in candidates) {
@@ -1454,7 +1714,8 @@ class AuthService {
             .limit(10)
             .get()
             .timeout(const Duration(seconds: 8));
-        debugPrint('[LOGIN LOOKUP] field=$field value=$value docs=${snap.docs.length}');
+        debugPrint(
+            '[LOGIN LOOKUP] field=$field value=$value docs=${snap.docs.length}');
         if (snap.docs.isEmpty) continue;
         final docs = snap.docs.map((d) {
           final data = d.data();
@@ -1468,7 +1729,8 @@ class AuthService {
           orElse: () => docs.first,
         );
         if (selected.isNotEmpty) {
-          debugPrint('[LOGIN LOOKUP] selected uid=${(selected['uid'] ?? '').toString()} role=${(selected['role'] ?? '').toString()}');
+          debugPrint(
+              '[LOGIN LOOKUP] selected uid=${(selected['uid'] ?? '').toString()} role=${(selected['role'] ?? '').toString()}');
           return selected;
         }
       }

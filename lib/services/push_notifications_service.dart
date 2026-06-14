@@ -19,21 +19,26 @@ class PushNotificationsService {
 
   static const String highImportanceChannelId = 'high_importance_channel';
   static const String _channelName = 'High Importance Notifications';
-  static const String _channelDescription = 'Used for order/chat/proposal updates.';
+  static const String _channelDescription =
+      'Used for order/chat/proposal updates.';
 
-  static final FlutterLocalNotificationsPlugin _local = FlutterLocalNotificationsPlugin();
+  static final FlutterLocalNotificationsPlugin _local =
+      FlutterLocalNotificationsPlugin();
   static const bool appPreviewSafeMode =
       bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
-  static final Map<String, DateTime> _recentLocalNotificationIds = <String, DateTime>{};
+  static final Map<String, DateTime> _recentLocalNotificationIds =
+      <String, DateTime>{};
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   StreamSubscription<User?>? _authSub;
   bool _initialized = false;
-  final Map<String, DateTime> _recentForegroundNotificationIds = <String, DateTime>{};
+  final Map<String, DateTime> _recentForegroundNotificationIds =
+      <String, DateTime>{};
 
   static Future<void> ensureLocalNotificationsInitialized() async {
     if (kIsWeb) return;
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings();
 
     await _local.initialize(
@@ -48,10 +53,12 @@ class PushNotificationsService {
     );
 
     await _local
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
 
-    debugPrint('[PushNotificationsService] channel created: $highImportanceChannelId');
+    debugPrint(
+        '[PushNotificationsService] channel created: $highImportanceChannelId');
   }
 
   static Future<void> showBackgroundNotification(
@@ -60,18 +67,38 @@ class PushNotificationsService {
   }) async {
     if (kIsWeb) return;
     if (message.notification != null && !allowNotificationPayloadLocalDisplay) {
-      debugPrint('[PushNotificationsService] native notification payload handled by OS; local display skipped.');
+      debugPrint(
+          '[PushNotificationsService] native notification payload handled by OS; local display skipped.');
       return;
     }
     await ensureLocalNotificationsInitialized();
     final data = message.data;
-    final title = message.notification?.title ?? data['title']?.toString() ?? 'إشعار جديد';
-    final body = message.notification?.body ?? data['body']?.toString() ?? '';
+    final explicitTitle =
+        (message.notification?.title ?? data['title']?.toString())?.trim() ??
+            '';
+    final body =
+        (message.notification?.body ?? data['body']?.toString())?.trim() ?? '';
+    final title =
+        explicitTitle.isNotEmpty || body.isEmpty ? explicitTitle : 'منفذك';
+    if (title.isEmpty && body.isEmpty) {
+      FirebaseCrashlytics.instance
+          .log('local_notification_skipped_missing_visible_content');
+      FirebaseCrashlytics.instance.setCustomKey(
+        'push_event_type',
+        data['type']?.toString() ?? '',
+      );
+      debugPrint(
+        '[PushNotificationsService] local notification skipped: missing title/body data=$data',
+      );
+      return;
+    }
     final dedupeId = _notificationDedupeIdFor(message);
     if (_shouldSkipDuplicateLocalNotification(dedupeId)) {
-      FirebaseCrashlytics.instance.setCustomKey('duplicate_notification_skipped', true);
+      FirebaseCrashlytics.instance
+          .setCustomKey('duplicate_notification_skipped', true);
       FirebaseCrashlytics.instance.setCustomKey('push_dedupe_key', dedupeId);
-      debugPrint('[PushNotificationsService] duplicate local notification skipped dedupeId=$dedupeId');
+      debugPrint(
+          '[PushNotificationsService] duplicate local notification skipped dedupeId=$dedupeId');
       return;
     }
 
@@ -121,30 +148,39 @@ class PushNotificationsService {
 
       await _requestPermissions();
       if (!kIsWeb && Platform.isIOS) {
-        await _messaging.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
+        await _messaging.setForegroundNotificationPresentationOptions(
+            alert: true, badge: true, sound: true);
       }
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
         try {
-          FirebaseCrashlytics.instance.log('push_on_message messageId=${message.messageId ?? ''}');
-          FirebaseCrashlytics.instance.setCustomKey('push_event_type', message.data['type']?.toString() ?? '');
+          FirebaseCrashlytics.instance
+              .log('push_on_message messageId=${message.messageId ?? ''}');
+          FirebaseCrashlytics.instance.setCustomKey(
+              'push_event_type', message.data['type']?.toString() ?? '');
           await _showForegroundNotification(message);
         } catch (error, stackTrace) {
-          debugPrint('[PushNotificationsService] onMessage handling failed (ignored): $error');
+          debugPrint(
+              '[PushNotificationsService] onMessage handling failed (ignored): $error');
           debugPrint('$stackTrace');
-          FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+          FirebaseCrashlytics.instance
+              .recordError(error, stackTrace, fatal: false);
         }
       });
 
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         try {
-          FirebaseCrashlytics.instance.log('push_on_message_opened_app messageId=${message.messageId ?? ''}');
-          FirebaseCrashlytics.instance.setCustomKey('push_event_type', message.data['type']?.toString() ?? '');
+          FirebaseCrashlytics.instance.log(
+              'push_on_message_opened_app messageId=${message.messageId ?? ''}');
+          FirebaseCrashlytics.instance.setCustomKey(
+              'push_event_type', message.data['type']?.toString() ?? '');
           _routeByPayload(message.data, navigatorKey);
         } catch (error, stackTrace) {
-          debugPrint('[PushNotificationsService] onMessageOpenedApp failed (ignored): $error');
+          debugPrint(
+              '[PushNotificationsService] onMessageOpenedApp failed (ignored): $error');
           debugPrint('$stackTrace');
-          FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+          FirebaseCrashlytics.instance
+              .recordError(error, stackTrace, fatal: false);
         }
       });
 
@@ -152,13 +188,17 @@ class PushNotificationsService {
       try {
         initialMessage = await _messaging.getInitialMessage();
       } catch (error, stackTrace) {
-        debugPrint('[PushNotificationsService] getInitialMessage failed (ignored): $error');
+        debugPrint(
+            '[PushNotificationsService] getInitialMessage failed (ignored): $error');
         debugPrint('$stackTrace');
-        FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+        FirebaseCrashlytics.instance
+            .recordError(error, stackTrace, fatal: false);
       }
       if (initialMessage != null) {
-        FirebaseCrashlytics.instance.log('push_initial_message messageId=${initialMessage.messageId ?? ''}');
-        FirebaseCrashlytics.instance.setCustomKey('push_event_type', initialMessage.data['type']?.toString() ?? '');
+        FirebaseCrashlytics.instance.log(
+            'push_initial_message messageId=${initialMessage.messageId ?? ''}');
+        FirebaseCrashlytics.instance.setCustomKey(
+            'push_event_type', initialMessage.data['type']?.toString() ?? '');
         _routeByPayload(initialMessage.data, navigatorKey);
       }
 
@@ -169,11 +209,14 @@ class PushNotificationsService {
         }
 
         try {
-          await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
+          await DeviceRegistrationService.instance
+              .registerAndListenTokenRefresh();
         } catch (error, stackTrace) {
-          debugPrint('[PushNotificationsService] token registration failed: $error');
+          debugPrint(
+              '[PushNotificationsService] token registration failed: $error');
           debugPrint('$stackTrace');
-          FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+          FirebaseCrashlytics.instance
+              .recordError(error, stackTrace, fatal: false);
         }
       });
 
@@ -181,11 +224,14 @@ class PushNotificationsService {
       debugPrint('PUSH_INIT_SUCCESS');
       if (currentUser != null) {
         try {
-          await DeviceRegistrationService.instance.registerAndListenTokenRefresh();
+          await DeviceRegistrationService.instance
+              .registerAndListenTokenRefresh();
         } catch (error, stackTrace) {
-          debugPrint('[PushNotificationsService] initial token registration failed: $error');
+          debugPrint(
+              '[PushNotificationsService] initial token registration failed: $error');
           debugPrint('$stackTrace');
-          FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+          FirebaseCrashlytics.instance
+              .recordError(error, stackTrace, fatal: false);
         }
       }
     } catch (error, stackTrace) {
@@ -208,11 +254,14 @@ class PushNotificationsService {
         sound: true,
         provisional: false,
       );
-      FirebaseCrashlytics.instance.setCustomKey('notification_permission_status', settings.authorizationStatus.name);
-      debugPrint('PUSH_INIT_SUCCESS: permission=${settings.authorizationStatus}');
+      FirebaseCrashlytics.instance.setCustomKey(
+          'notification_permission_status', settings.authorizationStatus.name);
+      debugPrint(
+          'PUSH_INIT_SUCCESS: permission=${settings.authorizationStatus}');
     } catch (error, stackTrace) {
       if (_isExpectedSimulatorPushError(error)) {
-        debugPrint('[PushNotificationsService] simulator push permission issue ignored: $error');
+        debugPrint(
+            '[PushNotificationsService] simulator push permission issue ignored: $error');
         return;
       }
       debugPrint('[PushNotificationsService] requestPermission failed: $error');
@@ -223,7 +272,8 @@ class PushNotificationsService {
 
     if (!kIsWeb) {
       await _local
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
           ?.requestNotificationsPermission();
     }
   }
@@ -244,21 +294,26 @@ class PushNotificationsService {
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {
     if (kIsWeb) {
-      debugPrint('[PushNotificationsService] web foreground message: ${message.data}');
+      debugPrint(
+          '[PushNotificationsService] web foreground message: ${message.data}');
       return;
     }
     if (Platform.isIOS && message.notification != null) {
-      debugPrint('[PushNotificationsService] iOS foreground notification payload displayed by FCM presentation options; local display skipped.');
+      debugPrint(
+          '[PushNotificationsService] iOS foreground notification payload displayed by FCM presentation options; local display skipped.');
       return;
     }
     final dedupeId = _notificationDedupeId(message);
     if (_shouldSkipDuplicateForegroundNotification(dedupeId)) {
-      FirebaseCrashlytics.instance.setCustomKey('duplicate_notification_skipped', true);
+      FirebaseCrashlytics.instance
+          .setCustomKey('duplicate_notification_skipped', true);
       FirebaseCrashlytics.instance.setCustomKey('push_dedupe_key', dedupeId);
-      debugPrint('[PushNotificationsService] duplicate foreground notification skipped dedupeId=$dedupeId');
+      debugPrint(
+          '[PushNotificationsService] duplicate foreground notification skipped dedupeId=$dedupeId');
       return;
     }
-    await showBackgroundNotification(message, allowNotificationPayloadLocalDisplay: true);
+    await showBackgroundNotification(message,
+        allowNotificationPayloadLocalDisplay: true);
   }
 
   String _notificationDedupeId(RemoteMessage message) {
@@ -279,7 +334,8 @@ class PushNotificationsService {
 
   static bool _shouldSkipDuplicateLocalNotification(String dedupeId) {
     final now = DateTime.now();
-    _recentLocalNotificationIds.removeWhere((_, seenAt) => now.difference(seenAt) > const Duration(minutes: 2));
+    _recentLocalNotificationIds.removeWhere(
+        (_, seenAt) => now.difference(seenAt) > const Duration(minutes: 2));
     if (dedupeId.isEmpty) return false;
     if (_recentLocalNotificationIds.containsKey(dedupeId)) {
       return true;
@@ -290,7 +346,8 @@ class PushNotificationsService {
 
   bool _shouldSkipDuplicateForegroundNotification(String dedupeId) {
     final now = DateTime.now();
-    _recentForegroundNotificationIds.removeWhere((_, seenAt) => now.difference(seenAt) > const Duration(minutes: 2));
+    _recentForegroundNotificationIds.removeWhere(
+        (_, seenAt) => now.difference(seenAt) > const Duration(minutes: 2));
     if (dedupeId.isEmpty) return false;
     if (_recentForegroundNotificationIds.containsKey(dedupeId)) {
       return true;
@@ -310,19 +367,22 @@ class PushNotificationsService {
     }
   }
 
-  Future<void> _routeByPayload(Map<String, dynamic> data, GlobalKey<NavigatorState> navKey) async {
+  Future<void> _routeByPayload(
+      Map<String, dynamic> data, GlobalKey<NavigatorState> navKey) async {
     final nav = navKey.currentState;
     if (nav == null) return;
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || uid.trim().isEmpty) return;
-    final userSnap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final userSnap =
+        await FirebaseFirestore.instance.collection('users').doc(uid).get();
     final profile = userSnap.data();
     if (profile == null) return;
     final role = (profile['role'] ?? '').toString();
     final mapIndex = role == 'outlet' ? 3 : 1;
     nav.pushAndRemoveUntil(
       MaterialPageRoute(
-        builder: (_) => HomeShellScreen(profile: profile, initialIndex: mapIndex),
+        builder: (_) =>
+            HomeShellScreen(profile: profile, initialIndex: mapIndex),
       ),
       (_) => false,
     );

@@ -14,14 +14,26 @@ export async function sendNotificationJob(job: FirebaseFirestore.DocumentData): 
     return;
   }
 
-  const devices = await getActiveDeviceTokens(recipientUid);
-  const title = String(job.notification?.title || 'إشعار جديد');
-  const body = String(job.notification?.body || '');
+  const rawTitle = String(job.notification?.title || '').trim();
+  const body = String(job.notification?.body || '').trim();
+  const title = rawTitle || (body ? 'منفذك' : '');
   const eventType = String(job.data?.type || job.type || '');
   const bookingId = String(job.data?.bookingId || job.bookingId || '');
   const actorId = String(job.data?.actorId || job.actorId || '');
   const screen = String(job.data?.screen || job.screen || '');
   const dedupeKey = String(job.data?.dedupeKey || job.dedupeKey || '');
+
+  if (!title && !body) {
+    logWarn('FCM sender skipped: missing visible notification content', {
+      push_recipient_uid: recipientUid,
+      push_event_type: eventType,
+      push_booking_id: bookingId,
+      push_dedupe_key: dedupeKey,
+    });
+    return;
+  }
+
+  const devices = await getActiveDeviceTokens(recipientUid);
 
   if (!devices.length) {
     logInfo('FCM sender skipped: no active devices', {

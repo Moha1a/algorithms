@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
@@ -31,10 +32,10 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyALEGcShx9HYqSJ6wE1KoUKk5JIEOwWyKw',
-    appId: '1:1025525101614:android:08c4c874f05d1713cfdbbf',
+    appId: '1:1025525101614:android:4da7e791eeb12acccfdbbf',
     messagingSenderId: '1025525101614',
     projectId: 'qiqa-c17c2',
-    storageBucket: 'qiqa-c17c2.appspot.com',
+    storageBucket: 'qiqa-c17c2.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
@@ -42,9 +43,10 @@ class DefaultFirebaseOptions {
     appId: '1:1025525101614:ios:cd97beff914ba68dcfdbbf',
     messagingSenderId: '1025525101614',
     projectId: 'qiqa-c17c2',
-    storageBucket: 'qiqa-c17c2.appspot.com',
+    storageBucket: 'qiqa-c17c2.firebasestorage.app',
     iosBundleId: 'com.company.manfathak',
-    iosClientId: '1025525101614-fko0al4vba9iumthi76rotmqvfmtnq0e.apps.googleusercontent.com',
+    iosClientId:
+        '1025525101614-fko0al4vba9iumthi76rotmqvfmtnq0e.apps.googleusercontent.com',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -54,7 +56,8 @@ class DefaultFirebaseOptions {
     projectId: 'qiqa-c17c2',
     storageBucket: 'qiqa-c17c2.appspot.com',
     iosBundleId: 'com.company.manfathak',
-    iosClientId: '1025525101614-fko0al4vba9iumthi76rotmqvfmtnq0e.apps.googleusercontent.com',
+    iosClientId:
+        '1025525101614-fko0al4vba9iumthi76rotmqvfmtnq0e.apps.googleusercontent.com',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

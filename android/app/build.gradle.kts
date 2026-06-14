@@ -1,4 +1,51 @@
+import java.io.File
+import java.io.FileInputStream
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+val keystoreProperties =
+    Properties().apply {
+        val propertiesFile = rootProject.file("key.properties")
+        if (propertiesFile.exists()) {
+            load(FileInputStream(propertiesFile))
+        }
+    }
+
+val releaseSigningRequested =
+    gradle.startParameter.taskNames.any {
+        it.contains("release", ignoreCase = true) || it.contains("bundle", ignoreCase = true)
+    }
+
+fun releaseSigningValue(propertyName: String, envName: String): String? =
+    (keystoreProperties[propertyName] as String?)?.takeIf { it.isNotBlank() }
+        ?: System.getenv(envName)?.takeIf { it.isNotBlank() }
+
+fun requiredReleaseSigningValue(propertyName: String, envName: String): String {
+    val value = releaseSigningValue(propertyName, envName)
+    if (value.isNullOrBlank() && releaseSigningRequested) {
+        throw GradleException(
+            "Missing Android release signing value '$propertyName'. " +
+                "Create android/key.properties or set $envName before building release."
+        )
+    }
+    return value.orEmpty()
+}
+
+fun releaseStoreFile(): File? {
+    val path = releaseSigningValue("storeFile", "ANDROID_KEYSTORE_PATH")
+    if (path.isNullOrBlank()) {
+        if (releaseSigningRequested) {
+            throw GradleException(
+                "Missing Android release signing storeFile. " +
+                    "Create android/key.properties or set ANDROID_KEYSTORE_PATH before building release."
+            )
+        }
+        return null
+    }
+
+    val candidate = File(path)
+    return if (candidate.isAbsolute) candidate else rootProject.file(path)
+}
 
 plugins {
     id("com.android.application")
@@ -26,9 +73,18 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = releaseStoreFile()
+            storePassword = requiredReleaseSigningValue("storePassword", "ANDROID_KEYSTORE_PASSWORD")
+            keyAlias = requiredReleaseSigningValue("keyAlias", "ANDROID_KEY_ALIAS")
+            keyPassword = requiredReleaseSigningValue("keyPassword", "ANDROID_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

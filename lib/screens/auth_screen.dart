@@ -1,5 +1,4 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -61,7 +60,16 @@ class _AuthScreenState extends State<AuthScreen> {
     final registrationTerms = _termsForRole(roleValue);
 
     return Scaffold(
-      appBar: AppBar(title: Text(_isLogin ? 'تسجيل الدخول برقم الهاتف' : 'إنشاء حساب برقم الهاتف')),
+      appBar: AppBar(
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.primaryDark,
+        surfaceTintColor: Colors.transparent,
+        title: Text(
+          _isLogin ? 'تسجيل الدخول برقم الهاتف' : 'إنشاء حساب برقم الهاتف',
+        ),
+      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -89,28 +97,46 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
                 const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: AppColors.primarySoft,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: AppColors.border),
                   ),
-                  child: Text(
-                    'نوع الحساب المختار: $roleLabel',
-                    style: const TextStyle(
-                      color: AppColors.primaryDark,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.verified_user_outlined,
+                        color: AppColors.primaryDark,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'نوع الحساب المختار: $roleLabel',
+                          style: const TextStyle(
+                            color: AppColors.primaryDark,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 14),
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(24),
                     border: Border.all(color: AppColors.border),
-                    boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 18, offset: Offset(0, 8))],
+                    boxShadow: const [
+                      BoxShadow(
+                          color: AppColors.shadow,
+                          blurRadius: 18,
+                          offset: Offset(0, 8))
+                    ],
                   ),
                   child: Column(
                     children: [
@@ -118,10 +144,13 @@ class _AuthScreenState extends State<AuthScreen> {
                         TextFormField(
                           controller: _fullNameController,
                           textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(labelText: 'الاسم الكامل'),
+                          decoration:
+                              const InputDecoration(labelText: 'الاسم الكامل'),
                           validator: (v) {
                             if (_isLogin) return null;
-                            if (v == null || v.trim().isEmpty) return 'يرجى إدخال الاسم الكامل';
+                            if (v == null || v.trim().isEmpty) {
+                              return 'يرجى إدخال الاسم الكامل';
+                            }
                             return null;
                           },
                         ),
@@ -140,10 +169,13 @@ class _AuthScreenState extends State<AuthScreen> {
                         TextFormField(
                           controller: _outletNameController,
                           textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(labelText: 'اسم المنفذ'),
+                          decoration:
+                              const InputDecoration(labelText: 'اسم المنفذ'),
                           validator: (v) {
                             if (!needOutletName) return null;
-                            if (v == null || v.trim().isEmpty) return 'يرجى إدخال اسم المنفذ';
+                            if (v == null || v.trim().isEmpty) {
+                              return 'يرجى إدخال اسم المنفذ';
+                            }
                             return null;
                           },
                         ),
@@ -152,7 +184,8 @@ class _AuthScreenState extends State<AuthScreen> {
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 14),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: AppColors.border),
@@ -169,14 +202,20 @@ class _AuthScreenState extends State<AuthScreen> {
                             child: TextFormField(
                               controller: _phoneController,
                               keyboardType: TextInputType.phone,
-                              inputFormatters: const [PhoneNumberInputFormatter()],
+                              inputFormatters: const [
+                                PhoneNumberInputFormatter()
+                              ],
                               textDirection: TextDirection.ltr,
                               decoration: const InputDecoration(
                                 labelText: 'رقم الهاتف',
                                 hintText: '07xxxxxxxxx أو 7xxxxxxxxx',
                               ),
                               validator: (v) {
-                                if (_isLogin && AuthService.isAppReviewPhoneInput(v ?? '')) return null;
+                                if (_isLogin &&
+                                    AuthService.isAppReviewPhoneInput(
+                                        v ?? '')) {
+                                  return null;
+                                }
                                 return IraqiPhoneUtils.validate(v ?? '');
                               },
                             ),
@@ -191,16 +230,25 @@ class _AuthScreenState extends State<AuthScreen> {
                         decoration: InputDecoration(
                           labelText: 'كلمة المرور',
                           suffixIcon: IconButton(
-                            tooltip: _passwordVisible ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور',
+                            tooltip: _passwordVisible
+                                ? 'إخفاء كلمة المرور'
+                                : 'إظهار كلمة المرور',
                             icon: Icon(
-                              _passwordVisible ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                              _passwordVisible
+                                  ? Icons.visibility_off_rounded
+                                  : Icons.visibility_rounded,
                             ),
-                            onPressed: () => setState(() => _passwordVisible = !_passwordVisible),
+                            onPressed: () => setState(
+                                () => _passwordVisible = !_passwordVisible),
                           ),
                         ),
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) return 'يرجى إدخال كلمة المرور';
-                          if (v.trim().length < 6) return 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
+                          if (v == null || v.trim().isEmpty) {
+                            return 'يرجى إدخال كلمة المرور';
+                          }
+                          if (v.trim().length < 6) {
+                            return 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
+                          }
                           return null;
                         },
                       ),
@@ -214,7 +262,12 @@ class _AuthScreenState extends State<AuthScreen> {
                           value: _acceptedTerms,
                           onChanged: _isLoading
                               ? null
-                              : (value) => setState(() => _acceptedTerms = value ?? false),
+                              : (value) => setState(
+                                  () => _acceptedTerms = value ?? false),
+                          activeColor: AppColors.primary,
+                          checkboxShape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
                           controlAffinity: ListTileControlAffinity.leading,
                           contentPadding: EdgeInsets.zero,
                           title: const Text(
@@ -232,16 +285,27 @@ class _AuthScreenState extends State<AuthScreen> {
                         width: double.infinity,
                         height: 50,
                         child: FilledButton.icon(
-                          onPressed: _isLoading ? null : () => _submit(roleValue),
+                          onPressed:
+                              _isLoading ? null : () => _submit(roleValue),
                           style: FilledButton.styleFrom(
                             backgroundColor: AppColors.primary,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
                           ),
                           icon: _isLoading
                               ? const SizedBox.shrink()
-                              : const Icon(Icons.login_rounded, color: Colors.white),
+                              : const Icon(Icons.login_rounded,
+                                  color: Colors.white),
                           label: _isLoading
-                              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
                               : Text(_isLogin ? 'متابعة' : 'إرسال رمز التحقق'),
                         ),
                       ),
@@ -251,18 +315,24 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
                 const SizedBox(height: 10),
                 TextButton(
-                  onPressed: _isLoading ? null : () => setState(() => _isLogin = !_isLogin),
+                  onPressed: _isLoading
+                      ? null
+                      : () => setState(() => _isLogin = !_isLogin),
                   child: Text(
-                    _isLogin ? 'ما عندك حساب؟ إنشاء حساب جديد' : 'عندك حساب؟ تسجيل الدخول',
-                    style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700),
+                    _isLogin
+                        ? 'ما عندك حساب؟ إنشاء حساب جديد'
+                        : 'عندك حساب؟ تسجيل الدخول',
+                    style: const TextStyle(
+                        color: AppColors.primaryDark,
+                        fontWeight: FontWeight.w700),
                   ),
                 ),
-
                 TextButton(
                   onPressed: _isLoading ? null : _openForgotPasswordFlow,
                   child: const Text(
                     'نسيت كلمة المرور؟',
-                    style: TextStyle(color: AppColors.info, fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                        color: AppColors.info, fontWeight: FontWeight.w700),
                   ),
                 ),
               ],
@@ -303,7 +373,8 @@ class _AuthScreenState extends State<AuthScreen> {
     debugPrint('[LOGIN FLOW] try start');
 
     final normalizedPhone = IraqiPhoneUtils.normalize(_phoneController.text);
-    debugPrint('[LOGIN INPUT] rawPhone=${_phoneController.text} countryCode=+964 normalizedPhone=$normalizedPhone role=$selectedRole');
+    debugPrint(
+        '[LOGIN INPUT] rawPhone=${_phoneController.text} countryCode=+964 normalizedPhone=$normalizedPhone role=$selectedRole');
     final isAdminOutletLogin = _isLogin &&
         selectedRole == 'outlet' &&
         normalizedPhone == _adminPhone &&
@@ -314,10 +385,6 @@ class _AuthScreenState extends State<AuthScreen> {
           MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
         );
       });
-      return;
-    }
-    if (kIsWeb) {
-      await _submitWeb(selectedRole: selectedRole, normalizedPhone: normalizedPhone);
       return;
     }
     if (mounted) setState(() => _isLoading = true);
@@ -361,7 +428,8 @@ class _AuthScreenState extends State<AuthScreen> {
               debugPrint('[LOGIN FLOW] navigation start');
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(
-                  builder: (_) => OutletApprovalPendingScreen(phoneNumber: normalizedPhone),
+                  builder: (_) =>
+                      OutletApprovalPendingScreen(phoneNumber: normalizedPhone),
                 ),
                 (_) => false,
               );
@@ -466,58 +534,6 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  Future<void> _submitWeb({
-    required String selectedRole,
-    required String normalizedPhone,
-  }) async {
-    if (mounted) setState(() => _isLoading = true);
-    try {
-      final profile = await _authService.loginOrRegisterWebWithPhonePassword(
-        role: selectedRole,
-        phoneNumber: normalizedPhone,
-        password: _passwordController.text,
-        isRegistration: !_isLogin,
-        fullName: _fullNameController.text,
-        governorate: _selectedGovernorate,
-        outletName: _outletNameController.text,
-        acceptedTerms: _acceptedTerms,
-        termsVersion: _termsVersion,
-        acceptedTermsItems: _termsForRole(selectedRole),
-      );
-      if (!mounted) return;
-      final isOutletRegistrationPending = !_isLogin &&
-          selectedRole == 'outlet' &&
-          (profile['approvalStatus'] ?? '').toString() == 'pending';
-      if (isOutletRegistrationPending) {
-        await FirebaseAuth.instance.signOut();
-        if (!mounted) return;
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) => OutletApprovalPendingScreen(phoneNumber: normalizedPhone),
-          ),
-          (_) => false,
-        );
-        return;
-      }
-      _openPostAuthScreen(profile);
-    } on FirebaseAuthException catch (e) {
-      debugPrint('[WEB AUTH] error code: ${e.code}');
-      _showMessage(_authService.mapFirebaseAuthError(e));
-      _showDebugErrorDialog(e.toString());
-    } on FirebaseException catch (e) {
-      debugPrint('[WEB AUTH] firebase error: ${e.code}');
-      _showMessage('حدث خطأ في الخدمة. حاول مرة أخرى.');
-      _showDebugErrorDialog(e.toString());
-    } catch (e, stackTrace) {
-      debugPrint('[WEB AUTH] unexpected error: $e');
-      debugPrint('$stackTrace');
-      _showMessage('حدث خطأ أثناء فتح الحساب من الموقع. حاول مرة أخرى.');
-      _showDebugErrorDialog(e.toString());
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   Future<void> _openForgotPasswordFlow() async {
     final controller = TextEditingController();
     final ok = await showDialog<bool>(
@@ -535,8 +551,12 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('متابعة')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('متابعة')),
         ],
       ),
     );
@@ -547,11 +567,6 @@ class _AuthScreenState extends State<AuthScreen> {
       _showMessage(err);
       return;
     }
-    if (kIsWeb) {
-      _showMessage('استعادة كلمة المرور عبر OTP مدعومة على Android/iOS فقط في هذا الإصدار.');
-      return;
-    }
-
     final normalized = IraqiPhoneUtils.normalize(controller.text);
     if (mounted) setState(() => _isLoading = true);
     var flowHandled = false;
@@ -611,7 +626,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   void _showDebugErrorDialog(String details) {
-    if (!mounted) return;
+    if (!mounted || kReleaseMode) return;
     showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
