@@ -24,6 +24,7 @@ import GoogleMaps
     configureGoogleMaps()
 
     GeneratedPluginRegistrant.register(with: self)
+    application.registerForRemoteNotifications()
     installMapsDiagnosticsChannel()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }

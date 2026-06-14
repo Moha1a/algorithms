@@ -399,6 +399,36 @@ class _AuthScreenState extends State<AuthScreen> {
         );
       }
       debugPrint('otp_start_after_password_success role=$selectedRole');
+      if (kIsWeb) {
+        final verificationId = await _authService.sendWebPhoneVerificationCode(
+          phoneNumber: normalizedPhone,
+        );
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        debugPrint('[LOGIN FLOW] web code sent; navigation start');
+        _safeNavigate(() {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => OtpVerificationScreen(
+                authService: _authService,
+                phoneNumber: normalizedPhone,
+                initialVerificationId: verificationId,
+                initialResendToken: null,
+                role: selectedRole,
+                isRegistration: !_isLogin,
+                fullName: _fullNameController.text,
+                governorate: _selectedGovernorate,
+                outletName: _outletNameController.text,
+                password: _passwordController.text,
+                acceptedTerms: _acceptedTerms,
+                termsVersion: _termsVersion,
+                acceptedTermsItems: _termsForRole(selectedRole),
+              ),
+            ),
+          );
+        });
+        return;
+      }
       await _authService.verifyPhoneNumber(
         phoneNumber: normalizedPhone,
         verificationCompleted: (credential) async {
@@ -571,6 +601,27 @@ class _AuthScreenState extends State<AuthScreen> {
     if (mounted) setState(() => _isLoading = true);
     var flowHandled = false;
     try {
+      if (kIsWeb) {
+        final verificationId = await _authService.sendWebPhoneVerificationCode(
+          phoneNumber: normalized,
+        );
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        _safeNavigate(() {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => OtpVerificationScreen(
+                authService: _authService,
+                phoneNumber: normalized,
+                initialVerificationId: verificationId,
+                initialResendToken: null,
+                isPasswordResetFlow: true,
+              ),
+            ),
+          );
+        });
+        return;
+      }
       await _authService.verifyPhoneNumber(
         phoneNumber: normalized,
         verificationCompleted: (_) {},

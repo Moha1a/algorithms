@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
@@ -50,7 +51,8 @@ class OtpVerificationScreen extends StatefulWidget {
 class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
 
   String _verificationId = '';
   int? _resendToken;
@@ -105,7 +107,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   Future<void> _verifyCode() async {
     debugPrint('[OTP FLOW] verify submit');
-    debugPrint('[OTP FLOW] verificationId=$_verificationId phone=${widget.phoneNumber} role=${widget.role} isRegistration=${widget.isRegistration}');
+    debugPrint(
+        '[OTP FLOW] verificationId=$_verificationId phone=${widget.phoneNumber} role=${widget.role} isRegistration=${widget.isRegistration}');
     if (_verificationId.trim().isEmpty) {
       _showMessage('تعذر بدء التحقق. أعد إرسال الرمز ثم حاول مرة أخرى.');
       return;
@@ -126,7 +129,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       );
 
       if (widget.isPasswordResetFlow) {
-        final userCred = await FirebaseAuth.instance.signInWithCredential(credential);
+        final userCred =
+            await FirebaseAuth.instance.signInWithCredential(credential);
         if (!mounted) return;
         setState(() {
           _verifiedCredential = credential;
@@ -159,7 +163,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         if (!mounted) return;
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (_) => OutletApprovalPendingScreen(phoneNumber: widget.phoneNumber),
+            builder: (_) =>
+                OutletApprovalPendingScreen(phoneNumber: widget.phoneNumber),
           ),
           (_) => false,
         );
@@ -194,9 +199,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   Future<void> _submitNewPassword() async {
     final verifiedUid = _verifiedUid;
-    if (_verifiedCredential == null || verifiedUid == null || verifiedUid.trim().isEmpty) return;
+    if (_verifiedCredential == null ||
+        verifiedUid == null ||
+        verifiedUid.trim().isEmpty) {
+      return;
+    }
     final verifiedAt = _verifiedAt;
-    if (verifiedAt == null || DateTime.now().difference(verifiedAt) > _passwordResetWindow) {
+    if (verifiedAt == null ||
+        DateTime.now().difference(verifiedAt) > _passwordResetWindow) {
       _showMessage('انتهت مهلة التحقق. يرجى إعادة إرسال رمز التحقق.');
       setState(() {
         _verifiedCredential = null;
@@ -218,7 +228,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
     setState(() => _isLoading = true);
     try {
-      await widget.authService.resetPasswordForVerifiedUid(uid: verifiedUid, newPassword: pass);
+      await widget.authService
+          .resetPasswordForVerifiedUid(uid: verifiedUid, newPassword: pass);
       await FirebaseAuth.instance.signOut();
       if (!mounted) return;
       _showMessage('تم تحديث كلمة المرور بنجاح');
@@ -234,6 +245,20 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     if (!_canResend || _isLoading) return;
     setState(() => _isLoading = true);
     try {
+      if (kIsWeb) {
+        final verificationId =
+            await widget.authService.sendWebPhoneVerificationCode(
+          phoneNumber: widget.phoneNumber,
+        );
+        if (!mounted) return;
+        setState(() {
+          _verificationId = verificationId;
+          _resendToken = null;
+        });
+        _startCountdown();
+        _showMessage('تم إعادة إرسال رمز التحقق');
+        return;
+      }
       await widget.authService.verifyPhoneNumber(
         phoneNumber: widget.phoneNumber,
         forceResendingToken: _resendToken,
@@ -264,10 +289,12 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final resetModeReady = widget.isPasswordResetFlow && _verifiedCredential != null;
+    final resetModeReady =
+        widget.isPasswordResetFlow && _verifiedCredential != null;
 
     return Scaffold(
-      appBar: AppBar(title: Text(resetModeReady ? 'كلمة مرور جديدة' : 'تأكيد رمز OTP')),
+      appBar: AppBar(
+          title: Text(resetModeReady ? 'كلمة مرور جديدة' : 'تأكيد رمز OTP')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(18),
@@ -343,11 +370,16 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 decoration: InputDecoration(
                   labelText: 'كلمة المرور الجديدة',
                   suffixIcon: IconButton(
-                    tooltip: _newPasswordVisible ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور',
+                    tooltip: _newPasswordVisible
+                        ? 'إخفاء كلمة المرور'
+                        : 'إظهار كلمة المرور',
                     icon: Icon(
-                      _newPasswordVisible ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                      _newPasswordVisible
+                          ? Icons.visibility_off_rounded
+                          : Icons.visibility_rounded,
                     ),
-                    onPressed: () => setState(() => _newPasswordVisible = !_newPasswordVisible),
+                    onPressed: () => setState(
+                        () => _newPasswordVisible = !_newPasswordVisible),
                   ),
                 ),
               ),
@@ -359,11 +391,16 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 decoration: InputDecoration(
                   labelText: 'تأكيد كلمة المرور',
                   suffixIcon: IconButton(
-                    tooltip: _confirmPasswordVisible ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور',
+                    tooltip: _confirmPasswordVisible
+                        ? 'إخفاء كلمة المرور'
+                        : 'إظهار كلمة المرور',
                     icon: Icon(
-                      _confirmPasswordVisible ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                      _confirmPasswordVisible
+                          ? Icons.visibility_off_rounded
+                          : Icons.visibility_rounded,
                     ),
-                    onPressed: () => setState(() => _confirmPasswordVisible = !_confirmPasswordVisible),
+                    onPressed: () => setState(() =>
+                        _confirmPasswordVisible = !_confirmPasswordVisible),
                   ),
                 ),
               ),

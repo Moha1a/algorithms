@@ -7,7 +7,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 
 import 'device_registration_service.dart';
 import 'input_digit_utils.dart';
@@ -113,6 +112,8 @@ class AuthService {
         return 'تم رفض طلب حساب المنفذ. يرجى التواصل مع الإدارة.';
       case 'captcha-check-failed':
         return 'تعذر التحقق الأمني. حاول مرة أخرى.';
+      case 'invalid-app-credential':
+        return 'تعذر التحقق الأمني للتطبيق. إذا كنت تستخدم الموقع، تأكد أن رابط الموقع مضاف في Firebase Authentication ضمن Authorized domains ثم حاول مرة أخرى.';
       case 'app-not-authorized':
         return 'التطبيق غير مصرح لهذا المشروع.';
       case 'operation-not-allowed':
@@ -211,6 +212,55 @@ class AuthService {
       throw FirebaseAuthException(
           code: 'user-profile-load-failed',
           message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
+    }
+  }
+
+  Future<String> sendWebPhoneVerificationCode({
+    required String phoneNumber,
+  }) async {
+    final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
+    final isLikelyE164 = RegExp(r'^\+[1-9]\d{7,14}$').hasMatch(normalizedPhone);
+    debugPrint(
+      '[WEB PHONE AUTH] start host=${Uri.base.host} phone=$normalizedPhone isLikelyE164=$isLikelyE164',
+    );
+    if (!kIsWeb) {
+      throw FirebaseAuthException(
+        code: 'unsupported-platform',
+        message: 'Web phone verification is only available on web.',
+      );
+    }
+    if (!isLikelyE164) {
+      throw FirebaseAuthException(
+        code: 'invalid-phone-number',
+        message: 'رقم الهاتف غير صالح. يجب أن يكون بصيغة +9647XXXXXXXXX',
+      );
+    }
+
+    try {
+      final result = await _auth.signInWithPhoneNumber(normalizedPhone);
+      final verificationId = result.verificationId.trim();
+      debugPrint(
+        '[WEB PHONE AUTH] code sent verificationIdPresent=${verificationId.isNotEmpty}',
+      );
+      if (verificationId.isEmpty) {
+        throw FirebaseAuthException(
+          code: 'missing-verification-id',
+          message: 'تعذر إنشاء جلسة التحقق من رقم الهاتف.',
+        );
+      }
+      return verificationId;
+    } on FirebaseAuthException catch (exception) {
+      _recordPhoneAuthFailure(exception, normalizedPhone);
+      rethrow;
+    } catch (error, stackTrace) {
+      debugPrint('[WEB PHONE AUTH] failed: $error');
+      debugPrint('$stackTrace');
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+      throw FirebaseAuthException(
+        code: 'invalid-app-credential',
+        message:
+            'Phone verification failed because the web app verifier was rejected.',
+      );
     }
   }
 
@@ -1177,7 +1227,9 @@ class AuthService {
   }) async {
     if (currentUid.trim().isEmpty ||
         normalizedPhone.trim().isEmpty ||
-        role.trim().isEmpty) return;
+        role.trim().isEmpty) {
+      return;
+    }
 
     final usersSnap = await _firestore
         .collection('users')
@@ -1280,7 +1332,9 @@ class AuthService {
   }) async {
     if (legacyUid.trim().isEmpty ||
         currentUid.trim().isEmpty ||
-        legacyUid == currentUid) return;
+        legacyUid == currentUid) {
+      return;
+    }
 
     await _replaceBookingsUidField(
         field: 'clientId', legacyUid: legacyUid, currentUid: currentUid);
