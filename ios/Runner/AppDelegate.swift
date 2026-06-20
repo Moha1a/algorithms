@@ -98,6 +98,7 @@ import UserNotifications
       return
     }
 
+    Messaging.messaging().appDidReceiveMessage(userInfo)
     super.application(
       application,
       didReceiveRemoteNotification: userInfo,
