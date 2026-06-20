@@ -453,7 +453,7 @@ class AuthService {
       case 'phone-auth-attempt-limit':
         return 'Local iOS OTP throttle prevented another request to avoid Firebase too-many-requests blocking.';
       case 'internal-error':
-        return 'Firebase iOS phone auth app verification failed for a real number. Inspect iosNativeDiagnostics in this report, especially entitlementTeamIdentifier, entitlementApsEnvironment, and URL scheme flags.';
+        return 'Firebase iOS phone auth app verification failed for a real number. Inspect iosNativeDiagnostics in this report, especially profileTeamIdentifier, profileApsEnvironment, and URL scheme flags.';
       case 'invalid-app-credential':
       case 'captcha-check-failed':
         return 'Firebase rejected the iOS app verifier token. Check Firebase iOS app configuration, URL schemes, and app verification setup.';
@@ -555,14 +555,10 @@ class AuthService {
         'firebaseIosBundleId': _auth.app.options.iosBundleId ?? '',
         'firebaseIosClientId': _auth.app.options.iosClientId ?? '',
         'iosPhoneAuthDiagnosis': _iosPhoneAuthDiagnosisFor(error),
-        'iosEntitlementTeamIdentifier':
-            nativeDiagnostics['entitlementTeamIdentifier'] ?? '',
-        'iosEntitlementApsEnvironment':
-            nativeDiagnostics['entitlementApsEnvironment'] ?? '',
-        'iosEntitlementApplicationIdentifier':
-            nativeDiagnostics['entitlementApplicationIdentifier'] ?? '',
         'iosProfileTeamIdentifier':
             nativeDiagnostics['profileTeamIdentifier'] ?? '',
+        'iosProfileApplicationIdentifier':
+            nativeDiagnostics['profileApplicationIdentifier'] ?? '',
         'iosProfileApsEnvironment':
             nativeDiagnostics['profileApsEnvironment'] ?? '',
         'iosReversedClientIdSchemePresent':

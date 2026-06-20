@@ -4,7 +4,6 @@ import FirebaseCore
 import FirebaseAuth
 import FirebaseMessaging
 import GoogleMaps
-import Security
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -145,7 +144,7 @@ import Security
     let diagnostics = phoneAuthNativeDiagnostics()
     print("[PHONE AUTH NATIVE] bundleId=\(diagnostics["bundleId"] ?? "") googleBundleId=\(diagnostics["googleBundleId"] ?? "") googleAppId=\(diagnostics["googleAppId"] ?? "")")
     print("[PHONE AUTH NATIVE] reversedClientIdPresent=\(diagnostics["reversedClientIdPresent"] ?? false) reversedClientIdSchemePresent=\(diagnostics["reversedClientIdSchemePresent"] ?? false) appIdSchemePresent=\(diagnostics["appIdSchemePresent"] ?? false) FirebaseAppDelegateProxyEnabled=\(diagnostics["firebaseAppDelegateProxyEnabled"] ?? "") backgroundModes=\(diagnostics["backgroundModes"] ?? [])")
-    print("[PHONE AUTH NATIVE] apsEnvironment=\(diagnostics["entitlementApsEnvironment"] ?? "") teamIdentifier=\(diagnostics["entitlementTeamIdentifier"] ?? "") applicationIdentifier=\(diagnostics["entitlementApplicationIdentifier"] ?? "") embeddedProfilePresent=\(diagnostics["embeddedProfilePresent"] ?? false)")
+    print("[PHONE AUTH NATIVE] profileApsEnvironment=\(diagnostics["profileApsEnvironment"] ?? "") profileTeamIdentifier=\(diagnostics["profileTeamIdentifier"] ?? "") profileApplicationIdentifier=\(diagnostics["profileApplicationIdentifier"] ?? "") embeddedProfilePresent=\(diagnostics["embeddedProfilePresent"] ?? false)")
   }
 
   private func phoneAuthNativeDiagnostics() -> [String: Any] {
@@ -184,25 +183,12 @@ import Security
       "firebaseAppDelegateProxyEnabled": proxyDescription,
       "backgroundModes": backgroundModes,
       "apnsTokenTypeExpectedByBuild": firebaseAuthAPNSTokenTypeName(),
-      "entitlementApsEnvironment": entitlementString("aps-environment"),
-      "entitlementTeamIdentifier": entitlementString("com.apple.developer.team-identifier"),
-      "entitlementApplicationIdentifier": entitlementString("application-identifier"),
     ]
 
     for (key, value) in embeddedProvisioningProfileDiagnostics() {
       diagnostics[key] = value
     }
     return diagnostics
-  }
-
-  private func entitlementString(_ key: String) -> String {
-    guard let task = SecTaskCreateFromSelf(nil) else {
-      return ""
-    }
-    guard let value = SecTaskCopyValueForEntitlement(task, key as CFString, nil) else {
-      return ""
-    }
-    return "\(value)"
   }
 
   private func embeddedProvisioningProfileDiagnostics() -> [String: Any] {
