@@ -34,6 +34,13 @@ class AuthService {
   final FirebaseFirestore _firestore;
 
   static Map<String, dynamic>? _lastDebugAuthErrorReport;
+  static final Map<String, List<DateTime>> _iosPhoneAuthAttempts = {};
+  static final Map<String, DateTime> _iosPhoneAuthBlockedUntil = {};
+  static const Duration _iosPhoneAuthMinInterval = Duration(seconds: 60);
+  static const Duration _iosPhoneAuthAttemptWindow = Duration(minutes: 10);
+  static const int _iosPhoneAuthMaxAttemptsPerWindow = 3;
+  static const Duration _iosPhoneAuthTooManyRequestsBackoff =
+      Duration(hours: 1);
 
   Map<String, dynamic>? get lastDebugAuthErrorReport {
     final report = _lastDebugAuthErrorReport;
@@ -107,6 +114,9 @@ class AuthService {
         return 'رمز التحقق غير صحيح.';
       case 'session-expired':
         return 'انتهت صلاحية رمز التحقق. أعد المحاولة.';
+      case 'phone-auth-cooldown':
+      case 'phone-auth-attempt-limit':
+        return 'تمت محاولات كثيرة لإرسال رمز التحقق. انتظر قليلاً ثم حاول مرة أخرى.';
       case 'too-many-requests':
         return 'تمت محاولات كثيرة. انتظر قليلًا ثم أعد المحاولة.';
       case 'quota-exceeded':
@@ -183,6 +193,7 @@ class AuthService {
       debugPrint('PHONE_AUTH_START');
       debugPrint(
           '[PHONE AUTH before verifyPhoneNumber] phoneInput=${phoneInput ?? phoneNumber} phoneFinal=$phoneNumber');
+      _guardIosPhoneAuthAttempt(phoneNumber);
       debugPrint('PHONE_AUTH_VERIFY_START');
       return _auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
@@ -213,6 +224,7 @@ class AuthService {
               error: exception,
               stackTrace: stackTrace,
             ));
+            _applyIosPhoneAuthBackoff(phoneNumber, exception);
             _recordPhoneAuthFailure(exception, phoneNumber);
             verificationFailed(exception);
           } catch (error, stackTrace) {
@@ -222,6 +234,7 @@ class AuthService {
         },
         codeSent: (verificationId, resendToken) {
           try {
+            _clearIosPhoneAuthBackoff(phoneNumber);
             debugPrint(
                 '[PHONE AUTH codeSent] SMS code sent successfully verificationIdPresent=${verificationId.trim().isNotEmpty} resendTokenPresent=${resendToken != null}');
             codeSent(verificationId, resendToken);
@@ -281,6 +294,71 @@ class AuthService {
           code: 'user-profile-load-failed',
           message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
     }
+  }
+
+  void _guardIosPhoneAuthAttempt(String phoneNumber) {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+
+    final now = DateTime.now();
+    final blockedUntil = _iosPhoneAuthBlockedUntil[phoneNumber];
+    if (blockedUntil != null && now.isBefore(blockedUntil)) {
+      final remainingSeconds = blockedUntil.difference(now).inSeconds;
+      debugPrint(
+          '[PHONE AUTH iOS throttle] blocked phone=$phoneNumber remainingSeconds=$remainingSeconds');
+      throw FirebaseAuthException(
+        code: 'phone-auth-cooldown',
+        message:
+            'انتظر قليلاً قبل طلب رمز تحقق جديد. المحاولات الكثيرة قد تمنع Firebase من إرسال الرمز مؤقتاً.',
+      );
+    }
+
+    final attempts = _iosPhoneAuthAttempts.putIfAbsent(phoneNumber, () => []);
+    attempts.removeWhere(
+        (attempt) => now.difference(attempt) > _iosPhoneAuthAttemptWindow);
+    if (attempts.isNotEmpty &&
+        now.difference(attempts.last) < _iosPhoneAuthMinInterval) {
+      final remainingSeconds = _iosPhoneAuthMinInterval.inSeconds -
+          now.difference(attempts.last).inSeconds;
+      debugPrint(
+          '[PHONE AUTH iOS throttle] too soon phone=$phoneNumber remainingSeconds=$remainingSeconds');
+      throw FirebaseAuthException(
+        code: 'phone-auth-cooldown',
+        message: 'انتظر 60 ثانية قبل طلب رمز تحقق جديد.',
+      );
+    }
+
+    if (attempts.length >= _iosPhoneAuthMaxAttemptsPerWindow) {
+      final unblockAt = attempts.first.add(_iosPhoneAuthAttemptWindow);
+      _iosPhoneAuthBlockedUntil[phoneNumber] = unblockAt;
+      debugPrint(
+          '[PHONE AUTH iOS throttle] window limit phone=$phoneNumber attempts=${attempts.length}');
+      throw FirebaseAuthException(
+        code: 'phone-auth-attempt-limit',
+        message:
+            'تمت محاولات كثيرة خلال وقت قصير. انتظر 10 دقائق ثم حاول مرة أخرى.',
+      );
+    }
+
+    attempts.add(now);
+    debugPrint(
+        '[PHONE AUTH iOS throttle] attempt allowed phone=$phoneNumber attemptsInWindow=${attempts.length}');
+  }
+
+  void _applyIosPhoneAuthBackoff(
+      String phoneNumber, FirebaseAuthException exception) {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    if (exception.code != 'too-many-requests') return;
+
+    final blockedUntil =
+        DateTime.now().add(_iosPhoneAuthTooManyRequestsBackoff);
+    _iosPhoneAuthBlockedUntil[phoneNumber] = blockedUntil;
+    debugPrint(
+        '[PHONE AUTH iOS throttle] Firebase too-many-requests backoff phone=$phoneNumber blockedUntil=${blockedUntil.toIso8601String()}');
+  }
+
+  void _clearIosPhoneAuthBackoff(String phoneNumber) {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    _iosPhoneAuthBlockedUntil.remove(phoneNumber);
   }
 
   Future<WebPhoneVerificationSession> sendWebPhoneVerificationCode({
@@ -357,6 +435,31 @@ class AuthService {
     crashlytics.recordError(exception, StackTrace.current, fatal: false);
   }
 
+  String _iosPhoneAuthDiagnosisFor(Object error) {
+    final code = error is FirebaseAuthException
+        ? error.code
+        : error is FirebaseException
+            ? error.code
+            : error is PlatformException
+                ? error.code
+                : '';
+
+    switch (code) {
+      case 'too-many-requests':
+        return 'Firebase blocked OTP requests for this device/phone temporarily because of repeated attempts. Stop testing for at least 60 minutes, then try once.';
+      case 'phone-auth-cooldown':
+      case 'phone-auth-attempt-limit':
+        return 'Local iOS OTP throttle prevented another request to avoid Firebase too-many-requests blocking.';
+      case 'internal-error':
+        return 'Firebase iOS phone auth app verification failed for a real number. Check silent APNs delivery and the reCAPTCHA fallback URL scheme on the iOS app in Firebase.';
+      case 'invalid-app-credential':
+      case 'captcha-check-failed':
+        return 'Firebase rejected the iOS app verifier token. Check Firebase iOS app configuration, URL schemes, and app verification setup.';
+      default:
+        return 'Inspect errorCode, errorMessage, firebaseAppId, firebaseIosBundleId, APNs setup, and Firebase Auth phone provider settings.';
+    }
+  }
+
   Future<void> _savePhoneAuthDebugError({
     required String phoneInput,
     required String phoneFinal,
@@ -402,6 +505,11 @@ class AuthService {
         'timestamp': FieldValue.serverTimestamp(),
         'appVersion': appVersion,
         'buildNumber': buildNumber,
+        'firebaseProjectId': _auth.app.options.projectId,
+        'firebaseAppId': _auth.app.options.appId,
+        'firebaseIosBundleId': _auth.app.options.iosBundleId ?? '',
+        'firebaseIosClientId': _auth.app.options.iosClientId ?? '',
+        'iosPhoneAuthDiagnosis': _iosPhoneAuthDiagnosisFor(error),
       };
 
       if (error is PlatformException) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -43,6 +44,8 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _acceptedTerms = false;
   bool _passwordVisible = false;
   bool _hasDebugAuthReport = false;
+  DateTime? _phoneAuthSubmitCooldownUntil;
+  Timer? _phoneAuthSubmitCooldownTimer;
   final String _selectedGovernorate = 'البصرة';
 
   @override
@@ -51,6 +54,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _passwordController.dispose();
     _fullNameController.dispose();
     _outletNameController.dispose();
+    _phoneAuthSubmitCooldownTimer?.cancel();
     super.dispose();
   }
 
@@ -61,6 +65,7 @@ class _AuthScreenState extends State<AuthScreen> {
     final roleValue = role == UserRole.outlet ? 'outlet' : 'client';
     final needOutletName = !_isLogin && role == UserRole.outlet;
     final registrationTerms = _termsForRole(roleValue);
+    final submitCoolingDown = _isPhoneAuthSubmitCoolingDown;
 
     return Scaffold(
       appBar: AppBar(
@@ -288,8 +293,9 @@ class _AuthScreenState extends State<AuthScreen> {
                         width: double.infinity,
                         height: 50,
                         child: FilledButton.icon(
-                          onPressed:
-                              _isLoading ? null : () => _submit(roleValue),
+                          onPressed: _isLoading || submitCoolingDown
+                              ? null
+                              : () => _submit(roleValue),
                           style: FilledButton.styleFrom(
                             backgroundColor: AppColors.primary,
                             foregroundColor: Colors.white,
@@ -354,6 +360,36 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  bool get _isPhoneAuthSubmitCoolingDown {
+    final until = _phoneAuthSubmitCooldownUntil;
+    return until != null && DateTime.now().isBefore(until);
+  }
+
+  void _startPhoneAuthSubmitCooldown() {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+
+    _phoneAuthSubmitCooldownTimer?.cancel();
+    _phoneAuthSubmitCooldownUntil = DateTime.now().add(
+      const Duration(seconds: 60),
+    );
+    if (mounted) setState(() {});
+
+    _phoneAuthSubmitCooldownTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        if (!_isPhoneAuthSubmitCoolingDown) {
+          timer.cancel();
+          _phoneAuthSubmitCooldownUntil = null;
+        }
+        setState(() {});
+      },
     );
   }
 
@@ -447,6 +483,7 @@ class _AuthScreenState extends State<AuthScreen> {
       }
       debugPrint(
           '[LOGIN FLOW] final phone sent to FirebaseAuth.verifyPhoneNumber: $normalizedPhone');
+      _startPhoneAuthSubmitCooldown();
       phoneAuthRequestStarted = true;
       await _authService.verifyPhoneNumber(
         phoneNumber: normalizedPhone,
@@ -517,7 +554,7 @@ class _AuthScreenState extends State<AuthScreen> {
           debugPrint('[LOGIN FLOW] error code: ${e.code}');
           debugPrint('[LOGIN FLOW] controlled failure');
           if (mounted) setState(() => _hasDebugAuthReport = true);
-          _showMessage('تعذر إرسال رمز التحقق، حاول لاحقاً.');
+          _showMessage(_phoneAuthRequestFailureMessage(e));
           if (mounted) setState(() => _isLoading = false);
         },
         codeSent: (verificationId, resendToken) {
@@ -563,7 +600,7 @@ class _AuthScreenState extends State<AuthScreen> {
       debugPrint('[LOGIN FLOW] controlled failure');
       if (phoneAuthRequestStarted) {
         if (mounted) setState(() => _hasDebugAuthReport = true);
-        _showMessage('تعذر إرسال رمز التحقق، حاول لاحقاً.');
+        _showMessage(_phoneAuthRequestFailureMessage(e));
       } else {
         _showMessage(_authService.mapFirebaseAuthError(e));
       }
@@ -575,7 +612,7 @@ class _AuthScreenState extends State<AuthScreen> {
       debugPrint('[LOGIN FLOW] controlled failure');
       if (phoneAuthRequestStarted) {
         if (mounted) setState(() => _hasDebugAuthReport = true);
-        _showMessage('تعذر إرسال رمز التحقق، حاول لاحقاً.');
+        _showMessage(_phoneAuthRequestFailureMessage(e));
       } else {
         _showMessage('حدث خطأ في الخدمة. حاول مرة أخرى.');
       }
@@ -587,7 +624,7 @@ class _AuthScreenState extends State<AuthScreen> {
       debugPrint('[LOGIN FLOW] controlled failure');
       if (phoneAuthRequestStarted) {
         if (mounted) setState(() => _hasDebugAuthReport = true);
-        _showMessage('تعذر إرسال رمز التحقق، حاول لاحقاً.');
+        _showMessage(_phoneAuthRequestFailureMessage(e));
       } else {
         _showMessage('حدث خطأ بالنظام. حاول مرة أخرى.');
       }
@@ -671,6 +708,7 @@ class _AuthScreenState extends State<AuthScreen> {
       }
       debugPrint(
           '[FORGOT PASSWORD] final phone sent to FirebaseAuth.verifyPhoneNumber: $normalized');
+      _startPhoneAuthSubmitCooldown();
       phoneAuthRequestStarted = true;
       await _authService.verifyPhoneNumber(
         phoneNumber: normalized,
@@ -686,7 +724,7 @@ class _AuthScreenState extends State<AuthScreen> {
           debugPrint(
               '[FORGOT PASSWORD verificationFailed] stackTrace=${StackTrace.current}');
           if (mounted) setState(() => _hasDebugAuthReport = true);
-          _showMessage('تعذر إرسال رمز التحقق، حاول لاحقاً.');
+          _showMessage(_phoneAuthRequestFailureMessage(e));
           if (mounted) setState(() => _isLoading = false);
         },
         codeSent: (verificationId, resendToken) {
@@ -720,7 +758,7 @@ class _AuthScreenState extends State<AuthScreen> {
     } catch (e) {
       if (phoneAuthRequestStarted) {
         if (mounted) setState(() => _hasDebugAuthReport = true);
-        _showMessage('تعذر إرسال رمز التحقق، حاول لاحقاً.');
+        _showMessage(_phoneAuthRequestFailureMessage(e));
       } else {
         _showMessage(_authService.mapFirebaseAuthError(e));
       }
@@ -736,6 +774,20 @@ class _AuthScreenState extends State<AuthScreen> {
         ),
       );
     });
+  }
+
+  String _phoneAuthRequestFailureMessage(Object error) {
+    if (error is FirebaseAuthException) {
+      switch (error.code) {
+        case 'too-many-requests':
+        case 'phone-auth-cooldown':
+        case 'phone-auth-attempt-limit':
+          return 'تمت محاولات كثيرة لإرسال الرمز. انتظر قليلاً ثم حاول مرة واحدة فقط.';
+        case 'internal-error':
+          return 'تعذر إرسال رمز التحقق. تم حفظ تقرير الخطأ للمراجعة، حاول لاحقاً.';
+      }
+    }
+    return 'تعذر إرسال رمز التحقق، حاول لاحقاً.';
   }
 
   void _showMessage(String text) {

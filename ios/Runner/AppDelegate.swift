@@ -25,6 +25,7 @@ import GoogleMaps
 
     GeneratedPluginRegistrant.register(with: self)
     application.registerForRemoteNotifications()
+    logFirebasePhoneAuthNativeDiagnostics()
     installMapsDiagnosticsChannel()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
@@ -33,8 +34,9 @@ import GoogleMaps
     _ application: UIApplication,
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
-    Auth.auth().setAPNSToken(deviceToken, type: .unknown)
+    Auth.auth().setAPNSToken(deviceToken, type: firebaseAuthAPNSTokenType())
     Messaging.messaging().apnsToken = deviceToken
+    print("[PHONE AUTH NATIVE] APNs token forwarded to FirebaseAuth type=\(firebaseAuthAPNSTokenTypeName()) bytes=\(deviceToken.count)")
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
   }
 
@@ -107,6 +109,51 @@ import GoogleMaps
       return nil
     }
     return apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private func firebaseAuthAPNSTokenType() -> AuthAPNSTokenType {
+    #if DEBUG
+    return .sandbox
+    #else
+    return .prod
+    #endif
+  }
+
+  private func firebaseAuthAPNSTokenTypeName() -> String {
+    #if DEBUG
+    return "sandbox"
+    #else
+    return "prod"
+    #endif
+  }
+
+  private func logFirebasePhoneAuthNativeDiagnostics() {
+    let bundleId = Bundle.main.bundleIdentifier ?? ""
+    let backgroundModes =
+      Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+    let proxyValue = Bundle.main.object(forInfoDictionaryKey: "FirebaseAppDelegateProxyEnabled")
+    let proxyDescription = proxyValue.map { "\($0)" } ?? "default_true"
+    let urlTypes =
+      Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]] ?? []
+    let urlSchemes = urlTypes.flatMap { item -> [String] in
+      return item["CFBundleURLSchemes"] as? [String] ?? []
+    }
+
+    var googleBundleId = ""
+    var googleAppId = ""
+    var reversedClientId = ""
+    if
+      let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+      let plist = NSDictionary(contentsOfFile: path)
+    {
+      googleBundleId = plist["BUNDLE_ID"] as? String ?? ""
+      googleAppId = plist["GOOGLE_APP_ID"] as? String ?? ""
+      reversedClientId = plist["REVERSED_CLIENT_ID"] as? String ?? ""
+    }
+
+    let appIdScheme = googleAppId.replacingOccurrences(of: ":", with: "-")
+    print("[PHONE AUTH NATIVE] bundleId=\(bundleId) googleBundleId=\(googleBundleId) googleAppId=\(googleAppId)")
+    print("[PHONE AUTH NATIVE] reversedClientIdPresent=\(!reversedClientId.isEmpty) reversedClientIdSchemePresent=\(urlSchemes.contains(reversedClientId)) appIdSchemePresent=\(urlSchemes.contains(appIdScheme)) FirebaseAppDelegateProxyEnabled=\(proxyDescription) backgroundModes=\(backgroundModes.joined(separator: ","))")
   }
 
   private func installMapsDiagnosticsChannel() {
