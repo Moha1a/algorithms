@@ -4,6 +4,7 @@ import FirebaseCore
 import FirebaseAuth
 import FirebaseMessaging
 import GoogleMaps
+import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -22,6 +23,21 @@ import GoogleMaps
   private var apnsTokenForwardedAt = ""
   private var remoteNotificationRegistrationError = ""
   private var remoteNotificationRegistrationFailedAt = ""
+  private var remoteNotificationReceivedCount = 0
+  private var lastRemoteNotificationAt = ""
+  private var lastRemoteNotificationWasFirebaseAuth = false
+  private var firebaseAuthSilentPushHandledCount = 0
+  private var firebaseAuthSilentPushHandledAt = ""
+  private var urlOpenReceivedCount = 0
+  private var firebaseAuthUrlHandledCount = 0
+  private var lastOpenedUrlAt = ""
+  private var lastOpenedUrlScheme = ""
+  private var lastOpenedUrlHost = ""
+  private var lastOpenedUrlWasFirebaseAuth = false
+  private var notificationAuthorizationStatus = "unknown"
+  private var notificationAlertSetting = "unknown"
+  private var notificationSoundSetting = "unknown"
+  private var notificationBadgeSetting = "unknown"
 
   override func application(
     _ application: UIApplication,
@@ -33,6 +49,7 @@ import GoogleMaps
     GeneratedPluginRegistrant.register(with: self)
     let didFinish = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     application.registerForRemoteNotifications()
+    refreshNotificationSettingsSnapshot()
     logFirebasePhoneAuthNativeDiagnostics()
     installMapsDiagnosticsChannel()
     installPhoneAuthDiagnosticsChannel()
@@ -69,7 +86,14 @@ import GoogleMaps
     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
   ) {
-    if Auth.auth().canHandleNotification(userInfo) {
+    remoteNotificationReceivedCount += 1
+    lastRemoteNotificationAt = nowIsoString()
+    let handledByFirebaseAuth = Auth.auth().canHandleNotification(userInfo)
+    lastRemoteNotificationWasFirebaseAuth = handledByFirebaseAuth
+    if handledByFirebaseAuth {
+      firebaseAuthSilentPushHandledCount += 1
+      firebaseAuthSilentPushHandledAt = lastRemoteNotificationAt
+      print("[PHONE AUTH NATIVE] FirebaseAuth silent push handled count=\(firebaseAuthSilentPushHandledCount)")
       completionHandler(.noData)
       return
     }
@@ -86,7 +110,15 @@ import GoogleMaps
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
-    if Auth.auth().canHandle(url) {
+    urlOpenReceivedCount += 1
+    lastOpenedUrlAt = nowIsoString()
+    lastOpenedUrlScheme = url.scheme ?? ""
+    lastOpenedUrlHost = url.host ?? ""
+    let handledByFirebaseAuth = Auth.auth().canHandle(url)
+    lastOpenedUrlWasFirebaseAuth = handledByFirebaseAuth
+    if handledByFirebaseAuth {
+      firebaseAuthUrlHandledCount += 1
+      print("[PHONE AUTH NATIVE] FirebaseAuth URL callback handled scheme=\(lastOpenedUrlScheme) count=\(firebaseAuthUrlHandledCount)")
       return true
     }
 
@@ -168,6 +200,7 @@ import GoogleMaps
   }
 
   private func phoneAuthNativeDiagnostics() -> [String: Any] {
+    refreshNotificationSettingsSnapshot()
     let bundleId = Bundle.main.bundleIdentifier ?? ""
     let backgroundModes =
       Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
@@ -201,13 +234,35 @@ import GoogleMaps
       "appIdScheme": appIdScheme,
       "appIdSchemePresent": urlSchemes.contains(appIdScheme),
       "firebaseAppDelegateProxyEnabled": proxyDescription,
+      "applicationState": applicationStateName(UIApplication.shared.applicationState),
+      "isRegisteredForRemoteNotifications": UIApplication.shared.isRegisteredForRemoteNotifications,
+      "backgroundRefreshStatus": backgroundRefreshStatusName(UIApplication.shared.backgroundRefreshStatus),
+      "isProtectedDataAvailable": UIApplication.shared.isProtectedDataAvailable,
+      "iosSystemVersion": UIDevice.current.systemVersion,
+      "iosDeviceModel": UIDevice.current.model,
+      "notificationAuthorizationStatus": notificationAuthorizationStatus,
+      "notificationAlertSetting": notificationAlertSetting,
+      "notificationSoundSetting": notificationSoundSetting,
+      "notificationBadgeSetting": notificationBadgeSetting,
       "backgroundModes": backgroundModes,
+      "urlSchemes": urlSchemes,
       "apnsTokenTypeExpectedByBuild": firebaseAuthAPNSTokenTypeName(),
       "apnsTokenForwardedToFirebaseAuth": apnsTokenForwardedToFirebaseAuth,
       "apnsTokenByteCount": apnsTokenByteCount,
       "apnsTokenForwardedAt": apnsTokenForwardedAt,
       "remoteNotificationRegistrationError": remoteNotificationRegistrationError,
       "remoteNotificationRegistrationFailedAt": remoteNotificationRegistrationFailedAt,
+      "remoteNotificationReceivedCount": remoteNotificationReceivedCount,
+      "lastRemoteNotificationAt": lastRemoteNotificationAt,
+      "lastRemoteNotificationWasFirebaseAuth": lastRemoteNotificationWasFirebaseAuth,
+      "firebaseAuthSilentPushHandledCount": firebaseAuthSilentPushHandledCount,
+      "firebaseAuthSilentPushHandledAt": firebaseAuthSilentPushHandledAt,
+      "urlOpenReceivedCount": urlOpenReceivedCount,
+      "firebaseAuthUrlHandledCount": firebaseAuthUrlHandledCount,
+      "lastOpenedUrlAt": lastOpenedUrlAt,
+      "lastOpenedUrlScheme": lastOpenedUrlScheme,
+      "lastOpenedUrlHost": lastOpenedUrlHost,
+      "lastOpenedUrlWasFirebaseAuth": lastOpenedUrlWasFirebaseAuth,
     ]
 
     for (key, value) in embeddedProvisioningProfileDiagnostics() {
@@ -262,6 +317,75 @@ import GoogleMaps
 
   private func nowIsoString() -> String {
     return ISO8601DateFormatter().string(from: Date())
+  }
+
+  private func refreshNotificationSettingsSnapshot() {
+    UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+      self?.notificationAuthorizationStatus =
+        self?.authorizationStatusName(settings.authorizationStatus) ?? "unknown"
+      self?.notificationAlertSetting =
+        self?.notificationSettingName(settings.alertSetting) ?? "unknown"
+      self?.notificationSoundSetting =
+        self?.notificationSettingName(settings.soundSetting) ?? "unknown"
+      self?.notificationBadgeSetting =
+        self?.notificationSettingName(settings.badgeSetting) ?? "unknown"
+    }
+  }
+
+  private func authorizationStatusName(_ status: UNAuthorizationStatus) -> String {
+    switch status {
+    case .notDetermined:
+      return "notDetermined"
+    case .denied:
+      return "denied"
+    case .authorized:
+      return "authorized"
+    case .provisional:
+      return "provisional"
+    case .ephemeral:
+      return "ephemeral"
+    @unknown default:
+      return "unknown"
+    }
+  }
+
+  private func notificationSettingName(_ setting: UNNotificationSetting) -> String {
+    switch setting {
+    case .notSupported:
+      return "notSupported"
+    case .disabled:
+      return "disabled"
+    case .enabled:
+      return "enabled"
+    @unknown default:
+      return "unknown"
+    }
+  }
+
+  private func applicationStateName(_ state: UIApplication.State) -> String {
+    switch state {
+    case .active:
+      return "active"
+    case .inactive:
+      return "inactive"
+    case .background:
+      return "background"
+    @unknown default:
+      return "unknown"
+    }
+  }
+
+  private func backgroundRefreshStatusName(_ status: UIBackgroundRefreshStatus) -> String {
+    switch status {
+    case .available:
+      return "available"
+    case .denied:
+      return "denied"
+    case .restricted:
+      return "restricted"
+    @unknown default:
+      return "unknown"
+    }
   }
 
   private func installMapsDiagnosticsChannel() {

@@ -38,6 +38,7 @@ class AuthService {
   static Map<String, dynamic>? _lastDebugAuthErrorReport;
   static final Map<String, List<DateTime>> _iosPhoneAuthAttempts = {};
   static final Map<String, DateTime> _iosPhoneAuthBlockedUntil = {};
+  static final Map<String, DateTime> _iosPhoneAuthStartedAt = {};
   static const Duration _iosPhoneAuthMinInterval = Duration(seconds: 60);
   static const Duration _iosPhoneAuthAttemptWindow = Duration(minutes: 10);
   static const int _iosPhoneAuthMaxAttemptsPerWindow = 3;
@@ -196,6 +197,7 @@ class AuthService {
       debugPrint(
           '[PHONE AUTH before verifyPhoneNumber] phoneInput=${phoneInput ?? phoneNumber} phoneFinal=$phoneNumber');
       _guardIosPhoneAuthAttempt(phoneNumber);
+      _iosPhoneAuthStartedAt[phoneNumber] = DateTime.now();
       await _waitForIosApnsTokenBeforePhoneAuth();
       debugPrint('PHONE_AUTH_VERIFY_START');
       return await _auth.verifyPhoneNumber(
@@ -463,6 +465,82 @@ class AuthService {
     }
   }
 
+  List<String> _iosPhoneAuthPossibleCausesFor({
+    required Object error,
+    required Map<String, dynamic> nativeDiagnostics,
+  }) {
+    final causes = <String>[];
+    final code = error is FirebaseAuthException
+        ? error.code
+        : error is FirebaseException
+            ? error.code
+            : error is PlatformException
+                ? error.code
+                : '';
+
+    bool isTrue(String key) => nativeDiagnostics[key] == true;
+    int intValue(String key) {
+      final value = nativeDiagnostics[key];
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    final registrationError =
+        (nativeDiagnostics['remoteNotificationRegistrationError'] ?? '')
+            .toString()
+            .trim();
+    final authStatus =
+        (nativeDiagnostics['notificationAuthorizationStatus'] ?? '').toString();
+    final backgroundRefresh =
+        (nativeDiagnostics['backgroundRefreshStatus'] ?? '').toString();
+
+    if (code == 'too-many-requests') {
+      causes.add(
+          'Firebase rate-limited this device/phone. Stop testing for at least 60 minutes.');
+    }
+    if (!isTrue('reversedClientIdSchemePresent')) {
+      causes.add('REVERSED_CLIENT_ID URL scheme is missing from Info.plist.');
+    }
+    if (!isTrue('appIdSchemePresent')) {
+      causes.add(
+          'Firebase encoded app id URL scheme is missing from Info.plist.');
+    }
+    if (!isTrue('apnsTokenForwardedToFirebaseAuth')) {
+      causes.add(
+          'APNs token was not received or was not forwarded to FirebaseAuth before verifyPhoneNumber.');
+    }
+    if (registrationError.isNotEmpty) {
+      causes.add(
+          'iOS remote notification registration failed: $registrationError');
+    }
+    if (backgroundRefresh == 'denied' || backgroundRefresh == 'restricted') {
+      causes.add(
+          'Background App Refresh is $backgroundRefresh; silent verification push may be restricted.');
+    }
+    if (authStatus == 'denied') {
+      causes.add(
+          'Notification permission is denied. Silent APNs can still work, but this is a risk signal to inspect.');
+    }
+    if (intValue('firebaseAuthSilentPushHandledCount') == 0) {
+      causes.add(
+          'FirebaseAuth did not handle any silent verification push during this app session. Check APNs Auth Key Team ID/Key ID in Firebase and Apple signing team.');
+    }
+    if (intValue('firebaseAuthUrlHandledCount') == 0) {
+      causes.add(
+          'FirebaseAuth did not handle any reCAPTCHA URL callback during this app session. Check fallback browser flow and URL schemes.');
+    }
+    if (!isTrue('isRegisteredForRemoteNotifications')) {
+      causes.add(
+          'UIApplication is not registered for remote notifications at diagnostics time.');
+    }
+    if (causes.isEmpty) {
+      causes.add(
+          'Client-side iOS configuration appears valid. Suspect Firebase Auth backend/SMS region/quota/provider issue or APNs credential mismatch not visible from the app.');
+    }
+    return causes;
+  }
+
   Future<Map<String, dynamic>> _loadIosPhoneAuthNativeDiagnostics() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return {};
 
@@ -544,6 +622,15 @@ class AuthService {
         debugPrint('$packageStackTrace');
       }
       final nativeDiagnostics = await _loadIosPhoneAuthNativeDiagnostics();
+      final startedAt = _iosPhoneAuthStartedAt[phoneFinal];
+      final failedAt = DateTime.now();
+      final elapsedMs = startedAt == null
+          ? -1
+          : failedAt.difference(startedAt).inMilliseconds;
+      final possibleCauses = _iosPhoneAuthPossibleCausesFor(
+        error: error,
+        nativeDiagnostics: nativeDiagnostics,
+      );
 
       final report = <String, dynamic>{
         'platform': 'iOS',
@@ -567,6 +654,9 @@ class AuthService {
         'exceptionType': error.runtimeType.toString(),
         'stackTrace': stackTrace.toString(),
         'timestamp': FieldValue.serverTimestamp(),
+        'verifyStartedAt': startedAt?.toIso8601String() ?? '',
+        'verifyFailedAt': failedAt.toIso8601String(),
+        'verifyFailureElapsedMs': elapsedMs,
         'appVersion': appVersion,
         'buildNumber': buildNumber,
         'firebaseProjectId': _auth.app.options.projectId,
@@ -574,6 +664,22 @@ class AuthService {
         'firebaseIosBundleId': _auth.app.options.iosBundleId ?? '',
         'firebaseIosClientId': _auth.app.options.iosClientId ?? '',
         'iosPhoneAuthDiagnosis': _iosPhoneAuthDiagnosisFor(error),
+        'iosPhoneAuthPossibleCauses': possibleCauses,
+        'iosApplicationState': nativeDiagnostics['applicationState'] ?? '',
+        'iosIsRegisteredForRemoteNotifications':
+            nativeDiagnostics['isRegisteredForRemoteNotifications'] ?? false,
+        'iosBackgroundRefreshStatus':
+            nativeDiagnostics['backgroundRefreshStatus'] ?? '',
+        'iosNotificationAuthorizationStatus':
+            nativeDiagnostics['notificationAuthorizationStatus'] ?? '',
+        'iosNotificationAlertSetting':
+            nativeDiagnostics['notificationAlertSetting'] ?? '',
+        'iosNotificationSoundSetting':
+            nativeDiagnostics['notificationSoundSetting'] ?? '',
+        'iosNotificationBadgeSetting':
+            nativeDiagnostics['notificationBadgeSetting'] ?? '',
+        'iosSystemVersion': nativeDiagnostics['iosSystemVersion'] ?? '',
+        'iosDeviceModel': nativeDiagnostics['iosDeviceModel'] ?? '',
         'iosProfileTeamIdentifier':
             nativeDiagnostics['profileTeamIdentifier'] ?? '',
         'iosProfileApplicationIdentifier':
@@ -593,6 +699,24 @@ class AuthService {
             nativeDiagnostics['remoteNotificationRegistrationError'] ?? '',
         'iosRemoteNotificationRegistrationFailedAt':
             nativeDiagnostics['remoteNotificationRegistrationFailedAt'] ?? '',
+        'iosRemoteNotificationReceivedCount':
+            nativeDiagnostics['remoteNotificationReceivedCount'] ?? 0,
+        'iosLastRemoteNotificationWasFirebaseAuth':
+            nativeDiagnostics['lastRemoteNotificationWasFirebaseAuth'] ?? false,
+        'iosFirebaseAuthSilentPushHandledCount':
+            nativeDiagnostics['firebaseAuthSilentPushHandledCount'] ?? 0,
+        'iosFirebaseAuthSilentPushHandledAt':
+            nativeDiagnostics['firebaseAuthSilentPushHandledAt'] ?? '',
+        'iosUrlOpenReceivedCount':
+            nativeDiagnostics['urlOpenReceivedCount'] ?? 0,
+        'iosFirebaseAuthUrlHandledCount':
+            nativeDiagnostics['firebaseAuthUrlHandledCount'] ?? 0,
+        'iosLastOpenedUrlAt': nativeDiagnostics['lastOpenedUrlAt'] ?? '',
+        'iosLastOpenedUrlScheme':
+            nativeDiagnostics['lastOpenedUrlScheme'] ?? '',
+        'iosLastOpenedUrlHost': nativeDiagnostics['lastOpenedUrlHost'] ?? '',
+        'iosLastOpenedUrlWasFirebaseAuth':
+            nativeDiagnostics['lastOpenedUrlWasFirebaseAuth'] ?? false,
         'iosNativeDiagnostics': nativeDiagnostics,
       };
 
