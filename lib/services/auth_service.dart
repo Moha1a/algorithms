@@ -12,6 +12,16 @@ import 'device_registration_service.dart';
 import 'input_digit_utils.dart';
 import 'iraqi_phone_utils.dart';
 
+class WebPhoneVerificationSession {
+  const WebPhoneVerificationSession({
+    required this.verificationId,
+    required this.confirmationResult,
+  });
+
+  final String verificationId;
+  final ConfirmationResult confirmationResult;
+}
+
 class AuthService {
   AuthService({
     FirebaseAuth? auth,
@@ -175,6 +185,12 @@ class AuthService {
         },
         verificationFailed: (exception) {
           try {
+            debugPrint('[PHONE AUTH verificationFailed] code=${exception.code}');
+            debugPrint(
+                '[PHONE AUTH verificationFailed] message=${exception.message ?? ''}');
+            debugPrint('[PHONE AUTH verificationFailed] toString=$exception');
+            debugPrint(
+                '[PHONE AUTH verificationFailed] stackTrace=${StackTrace.current}');
             _recordPhoneAuthFailure(exception, phoneNumber);
             verificationFailed(exception);
           } catch (error, stackTrace) {
@@ -184,6 +200,8 @@ class AuthService {
         },
         codeSent: (verificationId, resendToken) {
           try {
+            debugPrint(
+                '[PHONE AUTH codeSent] SMS code sent successfully verificationIdPresent=${verificationId.trim().isNotEmpty} resendTokenPresent=${resendToken != null}');
             codeSent(verificationId, resendToken);
           } catch (error, stackTrace) {
             debugPrint('[OTP FLOW] codeSent callback failed: $error');
@@ -192,6 +210,8 @@ class AuthService {
         },
         codeAutoRetrievalTimeout: (verificationId) {
           try {
+            debugPrint(
+                '[PHONE AUTH timeout] codeAutoRetrievalTimeout fired verificationIdPresent=${verificationId.trim().isNotEmpty}');
             codeAutoRetrievalTimeout(verificationId);
           } catch (error, stackTrace) {
             debugPrint(
@@ -215,7 +235,7 @@ class AuthService {
     }
   }
 
-  Future<String> sendWebPhoneVerificationCode({
+  Future<WebPhoneVerificationSession> sendWebPhoneVerificationCode({
     required String phoneNumber,
   }) async {
     final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
@@ -248,7 +268,10 @@ class AuthService {
           message: 'تعذر إنشاء جلسة التحقق من رقم الهاتف.',
         );
       }
-      return verificationId;
+      return WebPhoneVerificationSession(
+        verificationId: verificationId,
+        confirmationResult: result,
+      );
     } on FirebaseAuthException catch (exception) {
       _recordPhoneAuthFailure(exception, normalizedPhone);
       rethrow;

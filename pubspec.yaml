@@ -1,7 +1,7 @@
 name: monfathak_flutter
 description: Monfathak Flutter client
 publish_to: 'none'
-version: 1.0.3+26
+version: 1.0.4+27
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

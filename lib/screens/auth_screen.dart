@@ -400,7 +400,7 @@ class _AuthScreenState extends State<AuthScreen> {
       }
       debugPrint('otp_start_after_password_success role=$selectedRole');
       if (kIsWeb) {
-        final verificationId = await _authService.sendWebPhoneVerificationCode(
+        final webSession = await _authService.sendWebPhoneVerificationCode(
           phoneNumber: normalizedPhone,
         );
         if (!mounted) return;
@@ -412,8 +412,9 @@ class _AuthScreenState extends State<AuthScreen> {
               builder: (_) => OtpVerificationScreen(
                 authService: _authService,
                 phoneNumber: normalizedPhone,
-                initialVerificationId: verificationId,
+                initialVerificationId: webSession.verificationId,
                 initialResendToken: null,
+                webConfirmationResult: webSession.confirmationResult,
                 role: selectedRole,
                 isRegistration: !_isLogin,
                 fullName: _fullNameController.text,
@@ -429,6 +430,8 @@ class _AuthScreenState extends State<AuthScreen> {
         });
         return;
       }
+      debugPrint(
+          '[LOGIN FLOW] final phone sent to FirebaseAuth.verifyPhoneNumber: $normalizedPhone');
       await _authService.verifyPhoneNumber(
         phoneNumber: normalizedPhone,
         verificationCompleted: (credential) async {
@@ -488,14 +491,21 @@ class _AuthScreenState extends State<AuthScreen> {
         verificationFailed: (e) {
           flowHandled = true;
           debugPrint('PHONE_AUTH_VERIFY_FAILED');
+          debugPrint('[LOGIN FLOW verificationFailed] code=${e.code}');
+          debugPrint(
+              '[LOGIN FLOW verificationFailed] message=${e.message ?? ''}');
+          debugPrint('[LOGIN FLOW verificationFailed] toString=$e');
+          debugPrint(
+              '[LOGIN FLOW verificationFailed] stackTrace=${StackTrace.current}');
           debugPrint('[LOGIN FLOW] error code: ${e.code}');
           debugPrint('[LOGIN FLOW] controlled failure');
           _showMessage(_authService.mapFirebaseAuthError(e));
-          _showDebugErrorDialog(e.toString());
           if (mounted) setState(() => _isLoading = false);
         },
         codeSent: (verificationId, resendToken) {
           debugPrint('PHONE_AUTH_CODE_SENT');
+          debugPrint(
+              '[LOGIN FLOW codeSent] SMS code sent successfully verificationIdPresent=${verificationId.trim().isNotEmpty} resendTokenPresent=${resendToken != null}');
           if (flowHandled) return;
           flowHandled = true;
           if (!mounted) return;
@@ -523,7 +533,9 @@ class _AuthScreenState extends State<AuthScreen> {
             );
           });
         },
-        codeAutoRetrievalTimeout: (_) {
+        codeAutoRetrievalTimeout: (verificationId) {
+          debugPrint(
+              '[LOGIN FLOW timeout] codeAutoRetrievalTimeout fired verificationIdPresent=${verificationId.trim().isNotEmpty}');
           if (mounted) setState(() => _isLoading = false);
         },
       );
@@ -602,7 +614,7 @@ class _AuthScreenState extends State<AuthScreen> {
     var flowHandled = false;
     try {
       if (kIsWeb) {
-        final verificationId = await _authService.sendWebPhoneVerificationCode(
+        final webSession = await _authService.sendWebPhoneVerificationCode(
           phoneNumber: normalized,
         );
         if (!mounted) return;
@@ -613,8 +625,9 @@ class _AuthScreenState extends State<AuthScreen> {
               builder: (_) => OtpVerificationScreen(
                 authService: _authService,
                 phoneNumber: normalized,
-                initialVerificationId: verificationId,
+                initialVerificationId: webSession.verificationId,
                 initialResendToken: null,
+                webConfirmationResult: webSession.confirmationResult,
                 isPasswordResetFlow: true,
               ),
             ),
@@ -622,17 +635,27 @@ class _AuthScreenState extends State<AuthScreen> {
         });
         return;
       }
+      debugPrint(
+          '[FORGOT PASSWORD] final phone sent to FirebaseAuth.verifyPhoneNumber: $normalized');
       await _authService.verifyPhoneNumber(
         phoneNumber: normalized,
         verificationCompleted: (_) {},
         verificationFailed: (e) {
           flowHandled = true;
           debugPrint('PHONE_AUTH_VERIFY_FAILED');
+          debugPrint('[FORGOT PASSWORD verificationFailed] code=${e.code}');
+          debugPrint(
+              '[FORGOT PASSWORD verificationFailed] message=${e.message ?? ''}');
+          debugPrint('[FORGOT PASSWORD verificationFailed] toString=$e');
+          debugPrint(
+              '[FORGOT PASSWORD verificationFailed] stackTrace=${StackTrace.current}');
           _showMessage(_authService.mapFirebaseAuthError(e));
           if (mounted) setState(() => _isLoading = false);
         },
         codeSent: (verificationId, resendToken) {
           debugPrint('PHONE_AUTH_CODE_SENT');
+          debugPrint(
+              '[FORGOT PASSWORD codeSent] SMS code sent successfully verificationIdPresent=${verificationId.trim().isNotEmpty} resendTokenPresent=${resendToken != null}');
           if (flowHandled) return;
           flowHandled = true;
           if (!mounted) return;
@@ -651,7 +674,9 @@ class _AuthScreenState extends State<AuthScreen> {
             );
           });
         },
-        codeAutoRetrievalTimeout: (_) {
+        codeAutoRetrievalTimeout: (verificationId) {
+          debugPrint(
+              '[FORGOT PASSWORD timeout] codeAutoRetrievalTimeout fired verificationIdPresent=${verificationId.trim().isNotEmpty}');
           if (mounted) setState(() => _isLoading = false);
         },
       );
@@ -677,25 +702,8 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   void _showDebugErrorDialog(String details) {
-    if (!mounted || kReleaseMode) return;
-    showDialog<void>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('خطأ أثناء تسجيل الدخول'),
-        content: SingleChildScrollView(
-          child: Text(
-            details,
-            textDirection: TextDirection.ltr,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('إغلاق'),
-          ),
-        ],
-      ),
-    );
+    if (kReleaseMode) return;
+    debugPrint('[AUTH DEBUG ERROR DETAILS] $details');
   }
 
   void _safeNavigate(VoidCallback action) {

@@ -27,6 +27,7 @@ class OtpVerificationScreen extends StatefulWidget {
     this.termsVersion = '',
     this.acceptedTermsItems = const [],
     this.isPasswordResetFlow = false,
+    this.webConfirmationResult,
   });
 
   final AuthService authService;
@@ -43,6 +44,7 @@ class OtpVerificationScreen extends StatefulWidget {
   final String termsVersion;
   final List<String> acceptedTermsItems;
   final bool isPasswordResetFlow;
+  final ConfirmationResult? webConfirmationResult;
 
   @override
   State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
@@ -62,7 +64,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   bool _confirmPasswordVisible = false;
   int _secondsLeft = 60;
   Timer? _timer;
-  PhoneAuthCredential? _verifiedCredential;
+  ConfirmationResult? _webConfirmationResult;
   String? _verifiedUid;
   DateTime? _verifiedAt;
   static const Duration _passwordResetWindow = Duration(minutes: 10);
@@ -72,6 +74,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     super.initState();
     _verificationId = widget.initialVerificationId;
     _resendToken = widget.initialResendToken;
+    _webConfirmationResult = widget.webConfirmationResult;
     _startCountdown();
   }
 
@@ -122,6 +125,36 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
     setState(() => _isLoading = true);
     try {
+      if (kIsWeb && _webConfirmationResult != null) {
+        debugPrint('[OTP FLOW] web confirmationResult confirm');
+        final userCred = await _webConfirmationResult!.confirm(code);
+        if (widget.isPasswordResetFlow) {
+          if (!mounted) return;
+          setState(() {
+            _verifiedUid = userCred.user?.uid;
+            _verifiedAt = DateTime.now();
+          });
+          _showMessage('تم التحقق من الرمز. أدخل كلمة المرور الجديدة');
+          return;
+        }
+
+        final profile =
+            await widget.authService.loginOrRegisterWebWithPhonePassword(
+          role: widget.role,
+          phoneNumber: widget.phoneNumber,
+          password: widget.password,
+          isRegistration: widget.isRegistration,
+          fullName: widget.fullName,
+          governorate: widget.governorate,
+          outletName: widget.outletName,
+          acceptedTerms: widget.acceptedTerms,
+          termsVersion: widget.termsVersion,
+          acceptedTermsItems: widget.acceptedTermsItems,
+        );
+        await _openProfile(profile);
+        return;
+      }
+
       debugPrint('[OTP FLOW] create credential');
       final credential = PhoneAuthProvider.credential(
         verificationId: _verificationId,
@@ -133,7 +166,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
             await FirebaseAuth.instance.signInWithCredential(credential);
         if (!mounted) return;
         setState(() {
-          _verifiedCredential = credential;
           _verifiedUid = userCred.user?.uid;
           _verifiedAt = DateTime.now();
         });
@@ -154,33 +186,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         termsVersion: widget.termsVersion,
         acceptedTermsItems: widget.acceptedTermsItems,
       );
-      if (!mounted) return;
-      final isOutletRegistrationPending = widget.isRegistration &&
-          widget.role == 'outlet' &&
-          (profile['approvalStatus'] ?? '').toString() == 'pending';
-      if (isOutletRegistrationPending) {
-        await FirebaseAuth.instance.signOut();
-        if (!mounted) return;
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) =>
-                OutletApprovalPendingScreen(phoneNumber: widget.phoneNumber),
-          ),
-          (_) => false,
-        );
-        return;
-      }
-      if (!mounted) return;
-      try {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => HomeShellScreen(profile: profile)),
-          (_) => false,
-        );
-      } catch (error, stackTrace) {
-        debugPrint('[OTP FLOW] navigation failed: $error');
-        debugPrint('$stackTrace');
-        _showMessage('تم التحقق لكن حدث خطأ بالانتقال. حاول مرة أخرى.');
-      }
+      await _openProfile(profile);
     } on FirebaseAuthException catch (e) {
       debugPrint('[OTP FLOW] firebase exception: ${e.code}');
       if (e.code == 'missing-user-doc') {
@@ -197,11 +203,39 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     }
   }
 
+  Future<void> _openProfile(Map<String, dynamic> profile) async {
+    if (!mounted) return;
+    final isOutletRegistrationPending = widget.isRegistration &&
+        widget.role == 'outlet' &&
+        (profile['approvalStatus'] ?? '').toString() == 'pending';
+    if (isOutletRegistrationPending) {
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) =>
+              OutletApprovalPendingScreen(phoneNumber: widget.phoneNumber),
+        ),
+        (_) => false,
+      );
+      return;
+    }
+
+    try {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => HomeShellScreen(profile: profile)),
+        (_) => false,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('[OTP FLOW] navigation failed: $error');
+      debugPrint('$stackTrace');
+      _showMessage('تم التحقق لكن حدث خطأ بالانتقال. حاول مرة أخرى.');
+    }
+  }
+
   Future<void> _submitNewPassword() async {
     final verifiedUid = _verifiedUid;
-    if (_verifiedCredential == null ||
-        verifiedUid == null ||
-        verifiedUid.trim().isEmpty) {
+    if (verifiedUid == null || verifiedUid.trim().isEmpty) {
       return;
     }
     final verifiedAt = _verifiedAt;
@@ -209,7 +243,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         DateTime.now().difference(verifiedAt) > _passwordResetWindow) {
       _showMessage('انتهت مهلة التحقق. يرجى إعادة إرسال رمز التحقق.');
       setState(() {
-        _verifiedCredential = null;
+        _webConfirmationResult = null;
         _verifiedUid = null;
         _verifiedAt = null;
       });
@@ -246,14 +280,15 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     setState(() => _isLoading = true);
     try {
       if (kIsWeb) {
-        final verificationId =
+        final webSession =
             await widget.authService.sendWebPhoneVerificationCode(
           phoneNumber: widget.phoneNumber,
         );
         if (!mounted) return;
         setState(() {
-          _verificationId = verificationId;
+          _verificationId = webSession.verificationId;
           _resendToken = null;
+          _webConfirmationResult = webSession.confirmationResult;
         });
         _startCountdown();
         _showMessage('تم إعادة إرسال رمز التحقق');
@@ -290,7 +325,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   @override
   Widget build(BuildContext context) {
     final resetModeReady =
-        widget.isPasswordResetFlow && _verifiedCredential != null;
+        widget.isPasswordResetFlow && _verifiedUid != null;
 
     return Scaffold(
       appBar: AppBar(
