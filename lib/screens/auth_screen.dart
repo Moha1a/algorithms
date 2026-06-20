@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -40,6 +42,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isNavigating = false;
   bool _acceptedTerms = false;
   bool _passwordVisible = false;
+  bool _hasDebugAuthReport = false;
   final String _selectedGovernorate = 'البصرة';
 
   @override
@@ -335,6 +338,17 @@ class _AuthScreenState extends State<AuthScreen> {
                         color: AppColors.info, fontWeight: FontWeight.w700),
                   ),
                 ),
+                if (_hasDebugAuthReport)
+                  TextButton(
+                    onPressed:
+                        _isLoading ? null : _copyLastDebugAuthErrorReport,
+                    child: const Text(
+                      'نسخ تقرير الخطأ',
+                      style: TextStyle(
+                          color: AppColors.textMuted,
+                          fontWeight: FontWeight.w700),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -389,6 +403,7 @@ class _AuthScreenState extends State<AuthScreen> {
     }
     if (mounted) setState(() => _isLoading = true);
     var flowHandled = false;
+    var phoneAuthRequestStarted = false;
 
     try {
       if (_isLogin) {
@@ -432,8 +447,10 @@ class _AuthScreenState extends State<AuthScreen> {
       }
       debugPrint(
           '[LOGIN FLOW] final phone sent to FirebaseAuth.verifyPhoneNumber: $normalizedPhone');
+      phoneAuthRequestStarted = true;
       await _authService.verifyPhoneNumber(
         phoneNumber: normalizedPhone,
+        phoneInput: _phoneController.text,
         verificationCompleted: (credential) async {
           if (flowHandled) return;
           flowHandled = true;
@@ -499,7 +516,8 @@ class _AuthScreenState extends State<AuthScreen> {
               '[LOGIN FLOW verificationFailed] stackTrace=${StackTrace.current}');
           debugPrint('[LOGIN FLOW] error code: ${e.code}');
           debugPrint('[LOGIN FLOW] controlled failure');
-          _showMessage(_authService.mapFirebaseAuthError(e));
+          if (mounted) setState(() => _hasDebugAuthReport = true);
+          _showMessage('تعذر إرسال رمز التحقق، حاول لاحقاً.');
           if (mounted) setState(() => _isLoading = false);
         },
         codeSent: (verificationId, resendToken) {
@@ -543,21 +561,36 @@ class _AuthScreenState extends State<AuthScreen> {
       debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
       debugPrint('[LOGIN FLOW] error code: ${e.code}');
       debugPrint('[LOGIN FLOW] controlled failure');
-      _showMessage(_authService.mapFirebaseAuthError(e));
+      if (phoneAuthRequestStarted) {
+        if (mounted) setState(() => _hasDebugAuthReport = true);
+        _showMessage('تعذر إرسال رمز التحقق، حاول لاحقاً.');
+      } else {
+        _showMessage(_authService.mapFirebaseAuthError(e));
+      }
       _showDebugErrorDialog(e.toString());
       if (mounted) setState(() => _isLoading = false);
     } on FirebaseException catch (e) {
       debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
       debugPrint('[LOGIN FLOW] error code: ${e.code}');
       debugPrint('[LOGIN FLOW] controlled failure');
-      _showMessage('حدث خطأ في الخدمة. حاول مرة أخرى.');
+      if (phoneAuthRequestStarted) {
+        if (mounted) setState(() => _hasDebugAuthReport = true);
+        _showMessage('تعذر إرسال رمز التحقق، حاول لاحقاً.');
+      } else {
+        _showMessage('حدث خطأ في الخدمة. حاول مرة أخرى.');
+      }
       _showDebugErrorDialog(e.toString());
       if (mounted) setState(() => _isLoading = false);
     } on PlatformException catch (e) {
       debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
       debugPrint('[LOGIN FLOW] error code: ${e.code}');
       debugPrint('[LOGIN FLOW] controlled failure');
-      _showMessage('حدث خطأ بالنظام. حاول مرة أخرى.');
+      if (phoneAuthRequestStarted) {
+        if (mounted) setState(() => _hasDebugAuthReport = true);
+        _showMessage('تعذر إرسال رمز التحقق، حاول لاحقاً.');
+      } else {
+        _showMessage('حدث خطأ بالنظام. حاول مرة أخرى.');
+      }
       _showDebugErrorDialog(e.toString());
       if (mounted) setState(() => _isLoading = false);
     } on FormatException catch (e) {
@@ -612,6 +645,7 @@ class _AuthScreenState extends State<AuthScreen> {
     final normalized = IraqiPhoneUtils.normalize(controller.text);
     if (mounted) setState(() => _isLoading = true);
     var flowHandled = false;
+    var phoneAuthRequestStarted = false;
     try {
       if (kIsWeb) {
         final webSession = await _authService.sendWebPhoneVerificationCode(
@@ -637,8 +671,10 @@ class _AuthScreenState extends State<AuthScreen> {
       }
       debugPrint(
           '[FORGOT PASSWORD] final phone sent to FirebaseAuth.verifyPhoneNumber: $normalized');
+      phoneAuthRequestStarted = true;
       await _authService.verifyPhoneNumber(
         phoneNumber: normalized,
+        phoneInput: controller.text,
         verificationCompleted: (_) {},
         verificationFailed: (e) {
           flowHandled = true;
@@ -649,7 +685,8 @@ class _AuthScreenState extends State<AuthScreen> {
           debugPrint('[FORGOT PASSWORD verificationFailed] toString=$e');
           debugPrint(
               '[FORGOT PASSWORD verificationFailed] stackTrace=${StackTrace.current}');
-          _showMessage(_authService.mapFirebaseAuthError(e));
+          if (mounted) setState(() => _hasDebugAuthReport = true);
+          _showMessage('تعذر إرسال رمز التحقق، حاول لاحقاً.');
           if (mounted) setState(() => _isLoading = false);
         },
         codeSent: (verificationId, resendToken) {
@@ -681,7 +718,12 @@ class _AuthScreenState extends State<AuthScreen> {
         },
       );
     } catch (e) {
-      _showMessage(_authService.mapFirebaseAuthError(e));
+      if (phoneAuthRequestStarted) {
+        if (mounted) setState(() => _hasDebugAuthReport = true);
+        _showMessage('تعذر إرسال رمز التحقق، حاول لاحقاً.');
+      } else {
+        _showMessage(_authService.mapFirebaseAuthError(e));
+      }
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -699,6 +741,18 @@ class _AuthScreenState extends State<AuthScreen> {
   void _showMessage(String text) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _copyLastDebugAuthErrorReport() async {
+    final report = _authService.lastDebugAuthErrorReport;
+    if (report == null || report.isEmpty) {
+      _showMessage('لا يوجد تقرير خطأ محفوظ حالياً.');
+      return;
+    }
+
+    const encoder = JsonEncoder.withIndent('  ');
+    await Clipboard.setData(ClipboardData(text: encoder.convert(report)));
+    _showMessage('تم نسخ تقرير الخطأ.');
   }
 
   void _showDebugErrorDialog(String details) {

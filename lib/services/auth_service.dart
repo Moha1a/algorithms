@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'device_registration_service.dart';
 import 'input_digit_utils.dart';
@@ -31,6 +32,14 @@ class AuthService {
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
+
+  static Map<String, dynamic>? _lastDebugAuthErrorReport;
+
+  Map<String, dynamic>? get lastDebugAuthErrorReport {
+    final report = _lastDebugAuthErrorReport;
+    if (report == null) return null;
+    return Map<String, dynamic>.from(report);
+  }
 
   static const _testClientEmail = 'test.client@monfathak.local';
   static const _testOutletEmail = 'test.outlet@monfathak.local';
@@ -145,6 +154,7 @@ class AuthService {
 
   Future<void> verifyPhoneNumber({
     required String phoneNumber,
+    String? phoneInput,
     required void Function(PhoneAuthCredential credential)
         verificationCompleted,
     required void Function(FirebaseAuthException exception) verificationFailed,
@@ -171,11 +181,15 @@ class AuthService {
         );
       }
       debugPrint('PHONE_AUTH_START');
+      debugPrint(
+          '[PHONE AUTH before verifyPhoneNumber] phoneInput=${phoneInput ?? phoneNumber} phoneFinal=$phoneNumber');
       debugPrint('PHONE_AUTH_VERIFY_START');
       return _auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
         verificationCompleted: (credential) {
           try {
+            debugPrint(
+                '[PHONE AUTH verificationCompleted] credentialProviderId=${credential.providerId} signInMethod=${credential.signInMethod}');
             verificationCompleted(credential);
           } catch (error, stackTrace) {
             debugPrint(
@@ -185,12 +199,20 @@ class AuthService {
         },
         verificationFailed: (exception) {
           try {
-            debugPrint('[PHONE AUTH verificationFailed] code=${exception.code}');
+            final stackTrace = StackTrace.current;
+            debugPrint(
+                '[PHONE AUTH verificationFailed] code=${exception.code}');
             debugPrint(
                 '[PHONE AUTH verificationFailed] message=${exception.message ?? ''}');
             debugPrint('[PHONE AUTH verificationFailed] toString=$exception');
             debugPrint(
-                '[PHONE AUTH verificationFailed] stackTrace=${StackTrace.current}');
+                '[PHONE AUTH verificationFailed] stackTrace=$stackTrace');
+            unawaited(_savePhoneAuthDebugError(
+              phoneInput: phoneInput ?? phoneNumber,
+              phoneFinal: phoneNumber,
+              error: exception,
+              stackTrace: stackTrace,
+            ));
             _recordPhoneAuthFailure(exception, phoneNumber);
             verificationFailed(exception);
           } catch (error, stackTrace) {
@@ -222,11 +244,37 @@ class AuthService {
         forceResendingToken: forceResendingToken,
         timeout: const Duration(seconds: 60),
       );
-    } on FirebaseAuthException {
+    } on FirebaseAuthException catch (error, stackTrace) {
+      unawaited(_savePhoneAuthDebugError(
+        phoneInput: phoneInput ?? phoneNumber,
+        phoneFinal: phoneNumber,
+        error: error,
+        stackTrace: stackTrace,
+      ));
       rethrow;
+    } on PlatformException catch (error, stackTrace) {
+      debugPrint('[OTP FLOW] verifyPhoneNumber platform exception: $error');
+      debugPrint('$stackTrace');
+      unawaited(_savePhoneAuthDebugError(
+        phoneInput: phoneInput ?? phoneNumber,
+        phoneFinal: phoneNumber,
+        error: error,
+        stackTrace: stackTrace,
+      ));
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+      debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
+      throw FirebaseAuthException(
+          code: 'user-profile-load-failed',
+          message: 'تعذر التحقق من الحساب، حاول مرة أخرى');
     } catch (error, stackTrace) {
       debugPrint('[OTP FLOW] verifyPhoneNumber failed: $error');
       debugPrint('$stackTrace');
+      unawaited(_savePhoneAuthDebugError(
+        phoneInput: phoneInput ?? phoneNumber,
+        phoneFinal: phoneNumber,
+        error: error,
+        stackTrace: stackTrace,
+      ));
       FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
       debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
       throw FirebaseAuthException(
@@ -307,6 +355,85 @@ class AuthService {
     crashlytics.setCustomKey('phone_auth_platform', defaultTargetPlatform.name);
     crashlytics.setCustomKey('phone_auth_phone_prefix', phonePrefix);
     crashlytics.recordError(exception, StackTrace.current, fatal: false);
+  }
+
+  Future<void> _savePhoneAuthDebugError({
+    required String phoneInput,
+    required String phoneFinal,
+    required Object error,
+    required StackTrace stackTrace,
+  }) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+
+    try {
+      var appVersion = 'unknown';
+      var buildNumber = 'unknown';
+      try {
+        final packageInfo = await PackageInfo.fromPlatform();
+        appVersion = packageInfo.version;
+        buildNumber = packageInfo.buildNumber;
+      } catch (packageError, packageStackTrace) {
+        debugPrint(
+            '[PHONE AUTH debug_auth_errors] package info failed: $packageError');
+        debugPrint('$packageStackTrace');
+      }
+
+      final report = <String, dynamic>{
+        'platform': 'iOS',
+        'phoneInput': phoneInput,
+        'phoneFinal': phoneFinal,
+        'errorCode': error is FirebaseAuthException
+            ? error.code
+            : error is FirebaseException
+                ? error.code
+                : error is PlatformException
+                    ? error.code
+                    : '',
+        'errorMessage': error is FirebaseAuthException
+            ? error.message
+            : error is FirebaseException
+                ? error.message
+                : error is PlatformException
+                    ? error.message
+                    : error.toString(),
+        'errorString': error.toString(),
+        'exceptionType': error.runtimeType.toString(),
+        'stackTrace': stackTrace.toString(),
+        'timestamp': FieldValue.serverTimestamp(),
+        'appVersion': appVersion,
+        'buildNumber': buildNumber,
+      };
+
+      if (error is PlatformException) {
+        report.addAll({
+          'platformExceptionCode': error.code,
+          'platformExceptionMessage': error.message,
+          'platformExceptionDetails': error.details?.toString(),
+        });
+      } else if (error is! FirebaseAuthException) {
+        report.addAll({
+          'platformExceptionCode': error is FirebaseException
+              ? error.code
+              : error.runtimeType.toString(),
+          'platformExceptionMessage':
+              error is FirebaseException ? error.message : error.toString(),
+          'platformExceptionDetails': '',
+        });
+      }
+
+      _lastDebugAuthErrorReport = {
+        ...report,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+
+      debugPrint('[PHONE AUTH debug_auth_errors] saving report: '
+          '${jsonEncode(_lastDebugAuthErrorReport)}');
+      await _firestore.collection('debug_auth_errors').add(report);
+      debugPrint('[PHONE AUTH debug_auth_errors] saved');
+    } catch (saveError, saveStackTrace) {
+      debugPrint('[PHONE AUTH debug_auth_errors] save failed: $saveError');
+      debugPrint('$saveStackTrace');
+    }
   }
 
   Future<Map<String, dynamic>> loginWithPhonePasswordPreview({
