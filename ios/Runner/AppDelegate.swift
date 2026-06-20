@@ -171,7 +171,7 @@ import GoogleMaps
       reversedClientId = plist["REVERSED_CLIENT_ID"] as? String ?? ""
     }
 
-    let appIdScheme = googleAppId.replacingOccurrences(of: ":", with: "-")
+    let appIdScheme = "app-\(googleAppId.replacingOccurrences(of: ":", with: "-"))"
     var diagnostics: [String: Any] = [
       "bundleId": bundleId,
       "googleBundleId": googleBundleId,

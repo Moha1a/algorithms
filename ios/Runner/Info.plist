@@ -72,7 +72,6 @@
 			<string>FirebaseEncodedAppID</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>1-1025525101614-ios-cd97beff914ba68dcfdbbf</string>
 				<string>app-1-1025525101614-ios-cd97beff914ba68dcfdbbf</string>
 			</array>
 		</dict>
