@@ -17,6 +17,11 @@ import GoogleMaps
     "map_sdk_initialized": false,
     "map_tiles_possible_auth_issue": true,
   ]
+  private var apnsTokenForwardedToFirebaseAuth = false
+  private var apnsTokenByteCount = 0
+  private var apnsTokenForwardedAt = ""
+  private var remoteNotificationRegistrationError = ""
+  private var remoteNotificationRegistrationFailedAt = ""
 
   override func application(
     _ application: UIApplication,
@@ -40,8 +45,23 @@ import GoogleMaps
   ) {
     Auth.auth().setAPNSToken(deviceToken, type: firebaseAuthAPNSTokenType())
     Messaging.messaging().apnsToken = deviceToken
+    apnsTokenForwardedToFirebaseAuth = true
+    apnsTokenByteCount = deviceToken.count
+    apnsTokenForwardedAt = nowIsoString()
+    remoteNotificationRegistrationError = ""
+    remoteNotificationRegistrationFailedAt = ""
     print("[PHONE AUTH NATIVE] APNs token forwarded to FirebaseAuth type=\(firebaseAuthAPNSTokenTypeName()) bytes=\(deviceToken.count)")
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+  }
+
+  override func application(
+    _ application: UIApplication,
+    didFailToRegisterForRemoteNotificationsWithError error: Error
+  ) {
+    remoteNotificationRegistrationError = error.localizedDescription
+    remoteNotificationRegistrationFailedAt = nowIsoString()
+    print("[PHONE AUTH NATIVE] APNs registration failed: \(error.localizedDescription)")
+    super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
   }
 
   override func application(
@@ -183,6 +203,11 @@ import GoogleMaps
       "firebaseAppDelegateProxyEnabled": proxyDescription,
       "backgroundModes": backgroundModes,
       "apnsTokenTypeExpectedByBuild": firebaseAuthAPNSTokenTypeName(),
+      "apnsTokenForwardedToFirebaseAuth": apnsTokenForwardedToFirebaseAuth,
+      "apnsTokenByteCount": apnsTokenByteCount,
+      "apnsTokenForwardedAt": apnsTokenForwardedAt,
+      "remoteNotificationRegistrationError": remoteNotificationRegistrationError,
+      "remoteNotificationRegistrationFailedAt": remoteNotificationRegistrationFailedAt,
     ]
 
     for (key, value) in embeddedProvisioningProfileDiagnostics() {
@@ -233,6 +258,10 @@ import GoogleMaps
       return ""
     }
     return String(text[range])
+  }
+
+  private func nowIsoString() -> String {
+    return ISO8601DateFormatter().string(from: Date())
   }
 
   private func installMapsDiagnosticsChannel() {

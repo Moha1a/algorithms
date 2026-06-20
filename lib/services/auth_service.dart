@@ -173,7 +173,7 @@ class AuthService {
     required void Function(String verificationId, int? resendToken) codeSent,
     required void Function(String verificationId) codeAutoRetrievalTimeout,
     int? forceResendingToken,
-  }) {
+  }) async {
     try {
       final firebaseApp = _auth.app;
       final isLikelyE164 = RegExp(r'^\+[1-9]\d{7,14}$').hasMatch(phoneNumber);
@@ -196,8 +196,9 @@ class AuthService {
       debugPrint(
           '[PHONE AUTH before verifyPhoneNumber] phoneInput=${phoneInput ?? phoneNumber} phoneFinal=$phoneNumber');
       _guardIosPhoneAuthAttempt(phoneNumber);
+      await _waitForIosApnsTokenBeforePhoneAuth();
       debugPrint('PHONE_AUTH_VERIFY_START');
-      return _auth.verifyPhoneNumber(
+      return await _auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
         verificationCompleted: (credential) {
           try {
@@ -479,6 +480,24 @@ class AuthService {
     }
   }
 
+  Future<void> _waitForIosApnsTokenBeforePhoneAuth() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+
+    for (var attempt = 0; attempt < 8; attempt += 1) {
+      final diagnostics = await _loadIosPhoneAuthNativeDiagnostics();
+      final tokenForwarded =
+          diagnostics['apnsTokenForwardedToFirebaseAuth'] == true;
+      final registrationError =
+          (diagnostics['remoteNotificationRegistrationError'] ?? '')
+              .toString()
+              .trim();
+      debugPrint(
+          '[PHONE AUTH APNS WAIT] attempt=$attempt tokenForwarded=$tokenForwarded error=$registrationError');
+      if (tokenForwarded || registrationError.isNotEmpty) return;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+  }
+
   Map<String, dynamic> _stringKeyedMap(Map<dynamic, dynamic> raw) {
     return raw.map((key, value) {
       return MapEntry(key.toString(), _firestoreSafeValue(value));
@@ -565,6 +584,15 @@ class AuthService {
             nativeDiagnostics['reversedClientIdSchemePresent'] ?? false,
         'iosAppIdSchemePresent':
             nativeDiagnostics['appIdSchemePresent'] ?? false,
+        'iosApnsTokenForwardedToFirebaseAuth':
+            nativeDiagnostics['apnsTokenForwardedToFirebaseAuth'] ?? false,
+        'iosApnsTokenByteCount': nativeDiagnostics['apnsTokenByteCount'] ?? 0,
+        'iosApnsTokenForwardedAt':
+            nativeDiagnostics['apnsTokenForwardedAt'] ?? '',
+        'iosRemoteNotificationRegistrationError':
+            nativeDiagnostics['remoteNotificationRegistrationError'] ?? '',
+        'iosRemoteNotificationRegistrationFailedAt':
+            nativeDiagnostics['remoteNotificationRegistrationFailedAt'] ?? '',
         'iosNativeDiagnostics': nativeDiagnostics,
       };
 
