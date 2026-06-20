@@ -32,6 +32,8 @@ class AuthService {
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
+  static const MethodChannel _iosPhoneAuthChannel =
+      MethodChannel('manfathak/phone_auth');
 
   static Map<String, dynamic>? _lastDebugAuthErrorReport;
   static final Map<String, List<DateTime>> _iosPhoneAuthAttempts = {};
@@ -451,13 +453,55 @@ class AuthService {
       case 'phone-auth-attempt-limit':
         return 'Local iOS OTP throttle prevented another request to avoid Firebase too-many-requests blocking.';
       case 'internal-error':
-        return 'Firebase iOS phone auth app verification failed for a real number. Check silent APNs delivery and the reCAPTCHA fallback URL scheme on the iOS app in Firebase.';
+        return 'Firebase iOS phone auth app verification failed for a real number. Inspect iosNativeDiagnostics in this report, especially entitlementTeamIdentifier, entitlementApsEnvironment, and URL scheme flags.';
       case 'invalid-app-credential':
       case 'captcha-check-failed':
         return 'Firebase rejected the iOS app verifier token. Check Firebase iOS app configuration, URL schemes, and app verification setup.';
       default:
         return 'Inspect errorCode, errorMessage, firebaseAppId, firebaseIosBundleId, APNs setup, and Firebase Auth phone provider settings.';
     }
+  }
+
+  Future<Map<String, dynamic>> _loadIosPhoneAuthNativeDiagnostics() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return {};
+
+    try {
+      final raw = await _iosPhoneAuthChannel
+          .invokeMethod<Map<dynamic, dynamic>>('diagnostics')
+          .timeout(const Duration(seconds: 2));
+      return _stringKeyedMap(raw ?? {});
+    } catch (error, stackTrace) {
+      debugPrint('[PHONE AUTH native diagnostics] failed: $error');
+      debugPrint('$stackTrace');
+      return {
+        'nativeDiagnosticsError': error.toString(),
+      };
+    }
+  }
+
+  Map<String, dynamic> _stringKeyedMap(Map<dynamic, dynamic> raw) {
+    return raw.map((key, value) {
+      return MapEntry(key.toString(), _firestoreSafeValue(value));
+    });
+  }
+
+  dynamic _firestoreSafeValue(dynamic value) {
+    if (value is Map) {
+      return value.map((key, nestedValue) {
+        return MapEntry(key.toString(), _firestoreSafeValue(nestedValue));
+      });
+    }
+    if (value is Iterable) {
+      return value.map(_firestoreSafeValue).toList();
+    }
+    if (value == null ||
+        value is String ||
+        value is num ||
+        value is bool ||
+        value is Timestamp) {
+      return value;
+    }
+    return value.toString();
   }
 
   Future<void> _savePhoneAuthDebugError({
@@ -480,6 +524,7 @@ class AuthService {
             '[PHONE AUTH debug_auth_errors] package info failed: $packageError');
         debugPrint('$packageStackTrace');
       }
+      final nativeDiagnostics = await _loadIosPhoneAuthNativeDiagnostics();
 
       final report = <String, dynamic>{
         'platform': 'iOS',
@@ -510,6 +555,21 @@ class AuthService {
         'firebaseIosBundleId': _auth.app.options.iosBundleId ?? '',
         'firebaseIosClientId': _auth.app.options.iosClientId ?? '',
         'iosPhoneAuthDiagnosis': _iosPhoneAuthDiagnosisFor(error),
+        'iosEntitlementTeamIdentifier':
+            nativeDiagnostics['entitlementTeamIdentifier'] ?? '',
+        'iosEntitlementApsEnvironment':
+            nativeDiagnostics['entitlementApsEnvironment'] ?? '',
+        'iosEntitlementApplicationIdentifier':
+            nativeDiagnostics['entitlementApplicationIdentifier'] ?? '',
+        'iosProfileTeamIdentifier':
+            nativeDiagnostics['profileTeamIdentifier'] ?? '',
+        'iosProfileApsEnvironment':
+            nativeDiagnostics['profileApsEnvironment'] ?? '',
+        'iosReversedClientIdSchemePresent':
+            nativeDiagnostics['reversedClientIdSchemePresent'] ?? false,
+        'iosAppIdSchemePresent':
+            nativeDiagnostics['appIdSchemePresent'] ?? false,
+        'iosNativeDiagnostics': nativeDiagnostics,
       };
 
       if (error is PlatformException) {

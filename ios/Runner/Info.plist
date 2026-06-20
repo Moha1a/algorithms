@@ -56,9 +56,22 @@
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>GoogleReversedClientID</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>com.googleusercontent.apps.1025525101614-fko0al4vba9iumthi76rotmqvfmtnq0e</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>FirebaseEncodedAppID</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
 				<string>app-1-1025525101614-ios-cd97beff914ba68dcfdbbf</string>
 			</array>
 		</dict>

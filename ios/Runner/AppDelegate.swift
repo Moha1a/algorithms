@@ -1,8 +1,10 @@
 import Flutter
 import UIKit
+import FirebaseCore
 import FirebaseAuth
 import FirebaseMessaging
 import GoogleMaps
+import Security
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -21,13 +23,16 @@ import GoogleMaps
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    configureFirebaseIfNeeded()
     configureGoogleMaps()
 
     GeneratedPluginRegistrant.register(with: self)
+    let didFinish = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     application.registerForRemoteNotifications()
     logFirebasePhoneAuthNativeDiagnostics()
     installMapsDiagnosticsChannel()
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    installPhoneAuthDiagnosticsChannel()
+    return didFinish
   }
 
   override func application(
@@ -100,6 +105,15 @@ import GoogleMaps
     ]
   }
 
+  private func configureFirebaseIfNeeded() {
+    if FirebaseApp.app() == nil {
+      FirebaseApp.configure()
+      print("[PHONE AUTH NATIVE] FirebaseApp configured natively before APNs registration")
+    } else {
+      print("[PHONE AUTH NATIVE] FirebaseApp already configured before APNs registration")
+    }
+  }
+
   private func readFirebaseApiKey() -> String? {
     guard
       let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
@@ -128,6 +142,13 @@ import GoogleMaps
   }
 
   private func logFirebasePhoneAuthNativeDiagnostics() {
+    let diagnostics = phoneAuthNativeDiagnostics()
+    print("[PHONE AUTH NATIVE] bundleId=\(diagnostics["bundleId"] ?? "") googleBundleId=\(diagnostics["googleBundleId"] ?? "") googleAppId=\(diagnostics["googleAppId"] ?? "")")
+    print("[PHONE AUTH NATIVE] reversedClientIdPresent=\(diagnostics["reversedClientIdPresent"] ?? false) reversedClientIdSchemePresent=\(diagnostics["reversedClientIdSchemePresent"] ?? false) appIdSchemePresent=\(diagnostics["appIdSchemePresent"] ?? false) FirebaseAppDelegateProxyEnabled=\(diagnostics["firebaseAppDelegateProxyEnabled"] ?? "") backgroundModes=\(diagnostics["backgroundModes"] ?? [])")
+    print("[PHONE AUTH NATIVE] apsEnvironment=\(diagnostics["entitlementApsEnvironment"] ?? "") teamIdentifier=\(diagnostics["entitlementTeamIdentifier"] ?? "") applicationIdentifier=\(diagnostics["entitlementApplicationIdentifier"] ?? "") embeddedProfilePresent=\(diagnostics["embeddedProfilePresent"] ?? false)")
+  }
+
+  private func phoneAuthNativeDiagnostics() -> [String: Any] {
     let bundleId = Bundle.main.bundleIdentifier ?? ""
     let backgroundModes =
       Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
@@ -152,8 +173,80 @@ import GoogleMaps
     }
 
     let appIdScheme = googleAppId.replacingOccurrences(of: ":", with: "-")
-    print("[PHONE AUTH NATIVE] bundleId=\(bundleId) googleBundleId=\(googleBundleId) googleAppId=\(googleAppId)")
-    print("[PHONE AUTH NATIVE] reversedClientIdPresent=\(!reversedClientId.isEmpty) reversedClientIdSchemePresent=\(urlSchemes.contains(reversedClientId)) appIdSchemePresent=\(urlSchemes.contains(appIdScheme)) FirebaseAppDelegateProxyEnabled=\(proxyDescription) backgroundModes=\(backgroundModes.joined(separator: ","))")
+    var diagnostics: [String: Any] = [
+      "bundleId": bundleId,
+      "googleBundleId": googleBundleId,
+      "googleAppId": googleAppId,
+      "reversedClientIdPresent": !reversedClientId.isEmpty,
+      "reversedClientIdSchemePresent": urlSchemes.contains(reversedClientId),
+      "appIdScheme": appIdScheme,
+      "appIdSchemePresent": urlSchemes.contains(appIdScheme),
+      "firebaseAppDelegateProxyEnabled": proxyDescription,
+      "backgroundModes": backgroundModes,
+      "apnsTokenTypeExpectedByBuild": firebaseAuthAPNSTokenTypeName(),
+      "entitlementApsEnvironment": entitlementString("aps-environment"),
+      "entitlementTeamIdentifier": entitlementString("com.apple.developer.team-identifier"),
+      "entitlementApplicationIdentifier": entitlementString("application-identifier"),
+    ]
+
+    for (key, value) in embeddedProvisioningProfileDiagnostics() {
+      diagnostics[key] = value
+    }
+    return diagnostics
+  }
+
+  private func entitlementString(_ key: String) -> String {
+    guard let task = SecTaskCreateFromSelf(nil) else {
+      return ""
+    }
+    guard let value = SecTaskCopyValueForEntitlement(task, key as CFString, nil) else {
+      return ""
+    }
+    return "\(value)"
+  }
+
+  private func embeddedProvisioningProfileDiagnostics() -> [String: Any] {
+    var diagnostics: [String: Any] = [
+      "embeddedProfilePresent": false,
+      "profileTeamIdentifier": "",
+      "profileApplicationIdentifier": "",
+      "profileApsEnvironment": "",
+    ]
+    guard
+      let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
+      let data = try? Data(contentsOf: url)
+    else {
+      return diagnostics
+    }
+
+    diagnostics["embeddedProfilePresent"] = true
+    let text =
+      String(data: data, encoding: .isoLatin1) ??
+      String(data: data, encoding: .utf8) ??
+      ""
+    diagnostics["profileTeamIdentifier"] =
+      firstMatch(in: text, pattern: "<key>TeamIdentifier</key>\\s*<array>\\s*<string>([^<]+)</string>")
+    diagnostics["profileApplicationIdentifier"] =
+      firstMatch(in: text, pattern: "<key>application-identifier</key>\\s*<string>([^<]+)</string>")
+    diagnostics["profileApsEnvironment"] =
+      firstMatch(in: text, pattern: "<key>aps-environment</key>\\s*<string>([^<]+)</string>")
+    return diagnostics
+  }
+
+  private func firstMatch(in text: String, pattern: String) -> String {
+    guard
+      let regex = try? NSRegularExpression(pattern: pattern, options: []),
+      let match = regex.firstMatch(
+        in: text,
+        options: [],
+        range: NSRange(location: 0, length: text.utf16.count)
+      ),
+      match.numberOfRanges > 1,
+      let range = Range(match.range(at: 1), in: text)
+    else {
+      return ""
+    }
+    return String(text[range])
   }
 
   private func installMapsDiagnosticsChannel() {
@@ -172,6 +265,25 @@ import GoogleMaps
         return
       }
       result(self?.mapsDiagnostics ?? [:])
+    }
+  }
+
+  private func installPhoneAuthDiagnosticsChannel() {
+    guard let controller = window?.rootViewController as? FlutterViewController else {
+      print("[PHONE AUTH NATIVE] WARNING: FlutterViewController unavailable for diagnostics channel")
+      return
+    }
+
+    let channel = FlutterMethodChannel(
+      name: "manfathak/phone_auth",
+      binaryMessenger: controller.binaryMessenger
+    )
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "diagnostics" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      result(self?.phoneAuthNativeDiagnostics() ?? [:])
     }
   }
 }
