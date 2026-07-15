@@ -18,7 +18,8 @@ class AppVersionGate extends StatefulWidget {
   State<AppVersionGate> createState() => _AppVersionGateState();
 }
 
-class _AppVersionGateState extends State<AppVersionGate> with WidgetsBindingObserver {
+class _AppVersionGateState extends State<AppVersionGate>
+    with WidgetsBindingObserver {
   late Future<AppVersionStatus> _statusFuture;
 
   @override
@@ -48,7 +49,9 @@ class _AppVersionGateState extends State<AppVersionGate> with WidgetsBindingObse
 
   void _refresh() {
     if (!mounted) return;
-    setState(() => _statusFuture = _checkVersion());
+    setState(() {
+      _statusFuture = _checkVersion();
+    });
   }
 
   @override
@@ -57,7 +60,8 @@ class _AppVersionGateState extends State<AppVersionGate> with WidgetsBindingObse
       future: _statusFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
         final status = snapshot.data;
         if (status != null && status.updateRequired) {
@@ -94,7 +98,8 @@ class _ForceUpdateScreenState extends State<ForceUpdateScreen> {
       final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!opened && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر فتح صفحة التحديث. حاول مرة أخرى.')),
+          const SnackBar(
+              content: Text('تعذر فتح صفحة التحديث. حاول مرة أخرى.')),
         );
       }
     } finally {
@@ -125,7 +130,10 @@ class _ForceUpdateScreenState extends State<ForceUpdateScreen> {
                   borderRadius: BorderRadius.circular(28),
                   border: Border.all(color: AppColors.border),
                   boxShadow: const [
-                    BoxShadow(color: AppColors.shadow, blurRadius: 24, offset: Offset(0, 14)),
+                    BoxShadow(
+                        color: AppColors.shadow,
+                        blurRadius: 24,
+                        offset: Offset(0, 14)),
                   ],
                 ),
                 child: Column(
@@ -140,7 +148,8 @@ class _ForceUpdateScreenState extends State<ForceUpdateScreen> {
                           color: AppColors.primarySoft,
                           borderRadius: BorderRadius.circular(24),
                         ),
-                        child: const Icon(Icons.system_update_alt_rounded, color: AppColors.primaryDark, size: 42),
+                        child: const Icon(Icons.system_update_alt_rounded,
+                            color: AppColors.primaryDark, size: 42),
                       ),
                     ),
                     const SizedBox(height: 18),
@@ -186,7 +195,8 @@ class _ForceUpdateScreenState extends State<ForceUpdateScreen> {
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
                               )
                             : const Icon(Icons.open_in_new_rounded),
                         label: const Text('تحديث التطبيق'),
@@ -236,13 +246,15 @@ class _VersionInfoTile extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700),
+              style: const TextStyle(
+                  color: AppColors.textMuted, fontWeight: FontWeight.w700),
             ),
           ),
           Text(
             value,
             textDirection: TextDirection.ltr,
-            style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w900),
+            style: const TextStyle(
+                color: AppColors.textPrimary, fontWeight: FontWeight.w900),
           ),
         ],
       ),

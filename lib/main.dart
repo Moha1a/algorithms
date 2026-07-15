@@ -22,7 +22,10 @@ import 'theme/app_theme.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 Future<void>? _firebaseInitFuture;
-const bool appPreviewSafeMode = bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
+const bool appPreviewSafeMode =
+    bool.fromEnvironment('APP_PREVIEW_SAFE_MODE', defaultValue: false);
+const Duration _firebaseStartupTimeout = Duration(seconds: 15);
+const Duration _crashlyticsRecordTimeout = Duration(seconds: 4);
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -37,44 +40,68 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runZonedGuarded(() async {
-    await _bootstrapMain();
-  }, (error, stack) async {
+  runZonedGuarded(() {
+    WidgetsFlutterBinding.ensureInitialized();
+    _installGlobalErrorHandlers();
+    debugPrint('[APP START] started');
+    if (appPreviewSafeMode) {
+      debugPrint('APP_PREVIEW_SAFE_MODE_ENABLED');
+    }
+    final firebaseInitFuture = _initializeFirebaseWithLogs();
+    runApp(
+      MonfathakApp(firebaseInitFuture: firebaseInitFuture),
+    );
+  }, (error, stack) {
     debugPrint('UNCAUGHT ZONE ERROR: $error');
     debugPrint('$stack');
-    await FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    unawaited(_recordFatalErrorSafely(error, stack));
   });
 }
 
-Future<void> _bootstrapMain() async {
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  FlutterError.onError = (FlutterErrorDetails details) async {
+void _installGlobalErrorHandlers() {
+  FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     debugPrint('FLUTTER ERROR: ${details.exception}');
     debugPrint('${details.stack}');
-    await FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+    unawaited(_recordFlutterFatalErrorSafely(details));
     _showGlobalError(details.exceptionAsString());
   };
 
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('UNHANDLED PLATFORM ERROR: $error');
     debugPrint('$stack');
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    unawaited(_recordFatalErrorSafely(error, stack));
     _showGlobalError(error.toString());
     return true;
   };
+}
 
-  debugPrint('[APP START] started');
-  if (appPreviewSafeMode) {
-    debugPrint('APP_PREVIEW_SAFE_MODE_ENABLED');
+Future<void> _recordFatalErrorSafely(Object error, StackTrace stack) async {
+  try {
+    if (Firebase.apps.isEmpty) {
+      await _ensureFirebaseInitialized().timeout(_firebaseStartupTimeout);
+    }
+    await FirebaseCrashlytics.instance
+        .recordError(error, stack, fatal: true)
+        .timeout(_crashlyticsRecordTimeout);
+  } catch (recordError, recordStack) {
+    debugPrint('[CRASHLYTICS] fatal record skipped: $recordError');
+    debugPrint('$recordStack');
   }
-  FirebaseCrashlytics.instance.log('app_start');
-  final firebaseInitFuture = _initializeFirebaseWithLogs();
+}
 
-  runApp(
-    MonfathakApp(firebaseInitFuture: firebaseInitFuture),
-  );
+Future<void> _recordFlutterFatalErrorSafely(FlutterErrorDetails details) async {
+  try {
+    if (Firebase.apps.isEmpty) {
+      await _ensureFirebaseInitialized().timeout(_firebaseStartupTimeout);
+    }
+    await FirebaseCrashlytics.instance
+        .recordFlutterFatalError(details)
+        .timeout(_crashlyticsRecordTimeout);
+  } catch (recordError, recordStack) {
+    debugPrint('[CRASHLYTICS] flutter fatal record skipped: $recordError');
+    debugPrint('$recordStack');
+  }
 }
 
 void _showGlobalError(String message) {
@@ -105,8 +132,9 @@ void _showGlobalError(String message) {
 Future<void> _initializeFirebaseWithLogs() async {
   debugPrint('[FIREBASE INIT] start');
   try {
-    await _ensureFirebaseInitialized();
+    await _ensureFirebaseInitialized().timeout(_firebaseStartupTimeout);
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    FirebaseCrashlytics.instance.log('app_start');
     debugPrint('[FIREBASE INIT] success');
   } catch (error, stackTrace) {
     debugPrint('[FIREBASE INIT] failed: $error');
@@ -229,7 +257,8 @@ class _FirebaseBootstrapperState extends State<_FirebaseBootstrapper> {
       future: _initialScreenFuture,
       builder: (context, profileSnap) {
         if (profileSnap.connectionState != ConnectionState.done) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
         if (profileSnap.hasError) {
           return _StartupErrorScreen(error: profileSnap.error);
@@ -255,7 +284,8 @@ class _StartupErrorScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline_rounded, size: 64, color: Colors.redAccent),
+                const Icon(Icons.error_outline_rounded,
+                    size: 64, color: Colors.redAccent),
                 const SizedBox(height: 12),
                 const Text(
                   'تعذر تشغيل التطبيق',
@@ -277,7 +307,8 @@ class _StartupErrorScreen extends StatelessWidget {
                 FilledButton(
                   onPressed: () {
                     Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+                      MaterialPageRoute(
+                          builder: (_) => const RoleSelectionScreen()),
                       (_) => false,
                     );
                   },
