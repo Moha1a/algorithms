@@ -22,6 +22,22 @@
           }
         },
         {
+          "client_id": "1025525101614-a02fmuu4faeavqhoa0boguv0mulife1g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.company.manfathak",
+            "certificate_hash": "ff3e1fda087267bfa674a98edb191c6614a97b3e"
+          }
+        },
+        {
+          "client_id": "1025525101614-as1tna79sgjv98fgqr9pmfnrnntep5ib.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.company.manfathak",
+            "certificate_hash": "c370334e8ff3e3289cabcb911d505d6681aba127"
+          }
+        },
+        {
           "client_id": "1025525101614-e5dbe9u3k75svq501c7m91i9c0loghak.apps.googleusercontent.com",
           "client_type": 3
         }
@@ -37,6 +53,13 @@
             {
               "client_id": "1025525101614-e5dbe9u3k75svq501c7m91i9c0loghak.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "1025525101614-fko0al4vba9iumthi76rotmqvfmtnq0e.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.company.manfathak"
+              }
             }
           ]
         }

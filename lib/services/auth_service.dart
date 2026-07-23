@@ -34,6 +34,13 @@ class AuthService {
   final FirebaseFirestore _firestore;
   static const MethodChannel _iosPhoneAuthChannel =
       MethodChannel('manfathak/phone_auth');
+  static const MethodChannel _androidAuthChannel =
+      MethodChannel('manfathak/android_auth');
+  static const List<String> _androidGoogleServicesSha1InRepo = [
+    '82:DF:6F:3B:6E:1B:2C:F6:40:4D:75:5F:1E:CD:2E:EC:0D:E4:26:24',
+    'FF:3E:1F:DA:08:72:67:BF:A6:74:A9:8E:DB:19:1C:66:14:A9:7B:3E',
+    'C3:70:33:4E:8F:F3:E3:28:9C:AB:CB:91:1D:50:5D:66:81:AB:A1:27',
+  ];
 
   static Map<String, dynamic>? _lastDebugAuthErrorReport;
   static final Map<String, List<DateTime>> _iosPhoneAuthAttempts = {};
@@ -601,13 +608,258 @@ class AuthService {
     return value.toString();
   }
 
+  Future<void> _saveAndroidPhoneAuthDebugError({
+    required String phoneInput,
+    required String phoneFinal,
+    required Object error,
+    required StackTrace stackTrace,
+  }) async {
+    try {
+      var appVersion = 'unknown';
+      var buildNumber = 'unknown';
+      try {
+        final packageInfo = await PackageInfo.fromPlatform();
+        appVersion = packageInfo.version;
+        buildNumber = packageInfo.buildNumber;
+      } catch (packageError, packageStackTrace) {
+        debugPrint(
+            '[PHONE AUTH android debug_auth_errors] package info failed: $packageError');
+        debugPrint('$packageStackTrace');
+      }
+
+      final nativeDiagnostics = await _loadAndroidAuthNativeDiagnostics();
+      final signingSha1 =
+          (nativeDiagnostics['signingSha1'] ?? '').toString().trim();
+      final signingSha256 =
+          (nativeDiagnostics['signingSha256'] ?? '').toString().trim();
+      final signingSha1MatchesRepo =
+          _androidGoogleServicesSha1InRepo.contains(signingSha1.toUpperCase());
+      final possibleCauses = _androidPhoneAuthPossibleCausesFor(
+        error: error,
+        nativeDiagnostics: nativeDiagnostics,
+      );
+
+      final report = <String, dynamic>{
+        'platform': 'Android',
+        'phoneInput': phoneInput,
+        'phoneFinal': phoneFinal,
+        'errorCode': error is FirebaseAuthException
+            ? error.code
+            : error is FirebaseException
+                ? error.code
+                : error is PlatformException
+                    ? error.code
+                    : '',
+        'errorMessage': error is FirebaseAuthException
+            ? error.message
+            : error is FirebaseException
+                ? error.message
+                : error is PlatformException
+                    ? error.message
+                    : error.toString(),
+        'errorString': error.toString(),
+        'exceptionType': error.runtimeType.toString(),
+        'stackTrace': stackTrace.toString(),
+        'timestamp': FieldValue.serverTimestamp(),
+        'appVersion': appVersion,
+        'buildNumber': buildNumber,
+        'firebaseProjectId': _auth.app.options.projectId,
+        'firebaseAppId': _auth.app.options.appId,
+        'firebaseAndroidGoogleServicesSha1InRepo':
+            _androidGoogleServicesSha1InRepo,
+        'androidSigningSha1': signingSha1,
+        'androidSigningSha256': signingSha256,
+        'androidSigningSha1MatchesGoogleServicesSha1': signingSha1MatchesRepo,
+        'androidPackageName': nativeDiagnostics['packageName'] ?? '',
+        'androidInstallerPackageName':
+            nativeDiagnostics['installerPackageName'] ?? '',
+        'androidSdkInt': nativeDiagnostics['androidSdkInt'] ?? 0,
+        'androidDeviceManufacturer':
+            nativeDiagnostics['deviceManufacturer'] ?? '',
+        'androidDeviceModel': nativeDiagnostics['deviceModel'] ?? '',
+        'androidSigningCertificateCount':
+            nativeDiagnostics['signingCertificateCount'] ?? 0,
+        'androidSigningSha1List':
+            nativeDiagnostics['signingSha1List'] ?? const <String>[],
+        'androidSigningSha256List':
+            nativeDiagnostics['signingSha256List'] ?? const <String>[],
+        'androidPhoneAuthDiagnosis': _androidPhoneAuthDiagnosisFor(
+          error,
+          signingSha1MatchesRepo: signingSha1MatchesRepo,
+          signingSha1: signingSha1,
+        ),
+        'androidPhoneAuthPossibleCauses': possibleCauses,
+        'androidNativeDiagnostics': nativeDiagnostics,
+      };
+
+      if (error is PlatformException) {
+        report.addAll({
+          'platformExceptionCode': error.code,
+          'platformExceptionMessage': error.message,
+          'platformExceptionDetails': error.details?.toString(),
+        });
+      } else if (error is! FirebaseAuthException) {
+        report.addAll({
+          'platformExceptionCode': error is FirebaseException
+              ? error.code
+              : error.runtimeType.toString(),
+          'platformExceptionMessage':
+              error is FirebaseException ? error.message : error.toString(),
+          'platformExceptionDetails': '',
+        });
+      }
+
+      _lastDebugAuthErrorReport = {
+        ...report,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+
+      debugPrint('[PHONE AUTH android debug_auth_errors] saving report: '
+          '${jsonEncode(_lastDebugAuthErrorReport)}');
+      await _firestore.collection('debug_auth_errors').add(report);
+      debugPrint('[PHONE AUTH android debug_auth_errors] saved');
+    } catch (saveError, saveStackTrace) {
+      debugPrint(
+          '[PHONE AUTH android debug_auth_errors] save failed: $saveError');
+      debugPrint('$saveStackTrace');
+    }
+  }
+
+  Future<Map<String, dynamic>> _loadAndroidAuthNativeDiagnostics() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return {};
+
+    try {
+      final raw = await _androidAuthChannel
+          .invokeMethod<Map<dynamic, dynamic>>('diagnostics')
+          .timeout(const Duration(seconds: 2));
+      return _stringKeyedMap(raw ?? {});
+    } catch (error, stackTrace) {
+      debugPrint('[PHONE AUTH android native diagnostics] failed: $error');
+      debugPrint('$stackTrace');
+      return {
+        'nativeDiagnosticsError': error.toString(),
+      };
+    }
+  }
+
+  String _androidPhoneAuthDiagnosisFor(
+    Object error, {
+    required bool signingSha1MatchesRepo,
+    required String signingSha1,
+  }) {
+    final code = error is FirebaseAuthException
+        ? error.code
+        : error is FirebaseException
+            ? error.code
+            : error is PlatformException
+                ? error.code
+                : '';
+
+    if (signingSha1.isNotEmpty && !signingSha1MatchesRepo) {
+      return 'Android OTP is likely failing because this installed app is signed with SHA-1 $signingSha1, but android/app/google-services.json only contains $_androidGoogleServicesSha1InRepo. Add the Google Play App Signing SHA-1/SHA-256 and the upload key SHA-1/SHA-256 to Firebase Android app com.company.manfathak, then download the updated google-services.json.';
+    }
+    switch (code) {
+      case 'invalid-app-credential':
+      case 'captcha-check-failed':
+      case 'internal-error':
+        return 'Firebase rejected Android phone auth app verification. Check Firebase Android SHA-1/SHA-256 fingerprints, Play Integrity/API setup, SMS region/quota, and package com.company.manfathak.';
+      case 'app-not-authorized':
+        return 'Firebase says this Android app is not authorized. The package name or SHA certificate fingerprints do not match Firebase Android app configuration.';
+      case 'too-many-requests':
+        return 'Firebase rate-limited OTP requests for this phone/device. Stop testing for a while before retrying.';
+      case 'quota-exceeded':
+        return 'Firebase SMS quota was exceeded or billing/usage is blocking phone auth.';
+      default:
+        return 'Inspect androidSigningSha1, androidSigningSha256, firebaseAppId, errorCode, and Firebase Authentication phone provider settings.';
+    }
+  }
+
+  List<String> _androidPhoneAuthPossibleCausesFor({
+    required Object error,
+    required Map<String, dynamic> nativeDiagnostics,
+  }) {
+    final causes = <String>[];
+    final code = error is FirebaseAuthException
+        ? error.code
+        : error is FirebaseException
+            ? error.code
+            : error is PlatformException
+                ? error.code
+                : '';
+    final signingSha1 =
+        (nativeDiagnostics['signingSha1'] ?? '').toString().trim();
+    final signingSha256 =
+        (nativeDiagnostics['signingSha256'] ?? '').toString().trim();
+    final installer =
+        (nativeDiagnostics['installerPackageName'] ?? '').toString().trim();
+    final packageName =
+        (nativeDiagnostics['packageName'] ?? '').toString().trim();
+    final diagnosticsError =
+        (nativeDiagnostics['nativeDiagnosticsError'] ?? '').toString().trim();
+
+    if (diagnosticsError.isNotEmpty) {
+      causes
+          .add('Could not read Android signing diagnostics: $diagnosticsError');
+    }
+    if (packageName.isNotEmpty && packageName != 'com.company.manfathak') {
+      causes.add(
+          'Installed package name is $packageName, expected com.company.manfathak.');
+    }
+    if (signingSha1.isEmpty) {
+      causes.add(
+          'Could not read installed Android signing SHA-1. Re-test on a physical device build.');
+    } else if (!_androidGoogleServicesSha1InRepo
+        .contains(signingSha1.toUpperCase())) {
+      causes.add(
+          'Installed app SHA-1 does not match google-services.json. Firebase has $_androidGoogleServicesSha1InRepo, installed app has $signingSha1.');
+    }
+    if (signingSha256.isEmpty) {
+      causes.add(
+          'Could not read installed Android signing SHA-256; Firebase often needs SHA-256 too for Play Integrity.');
+    }
+    if (installer == 'com.android.vending') {
+      causes.add(
+          'This app was installed from Google Play, so Firebase must include the Play App Signing SHA-1/SHA-256, not only the upload-key SHA.');
+    }
+    if (code == 'invalid-app-credential' ||
+        code == 'captcha-check-failed' ||
+        code == 'internal-error' ||
+        code == 'app-not-authorized') {
+      causes.add(
+          'Firebase app verifier was rejected. Check Android SHA fingerprints in Firebase project qiqa-c17c2 and re-download google-services.json after adding them.');
+    }
+    if (code == 'too-many-requests') {
+      causes.add(
+          'Firebase temporarily blocked OTP requests because of repeated attempts.');
+    }
+    if (code == 'quota-exceeded') {
+      causes.add(
+          'Firebase SMS quota/billing/usage limits are blocking OTP sends.');
+    }
+    if (causes.isEmpty) {
+      causes.add(
+          'Android client configuration looks consistent from local diagnostics. Check Firebase Auth SMS region, quota, and Play Integrity setup in Google Cloud.');
+    }
+    return causes;
+  }
+
   Future<void> _savePhoneAuthDebugError({
     required String phoneInput,
     required String phoneFinal,
     required Object error,
     required StackTrace stackTrace,
   }) async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    if (kIsWeb) return;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await _saveAndroidPhoneAuthDebugError(
+        phoneInput: phoneInput,
+        phoneFinal: phoneFinal,
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return;
+    }
+    if (defaultTargetPlatform != TargetPlatform.iOS) return;
 
     try {
       var appVersion = 'unknown';
