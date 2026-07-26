@@ -41,9 +41,12 @@ class PushNotificationsService {
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings();
 
-    await _local.initialize(
-      const InitializationSettings(android: androidSettings, iOS: iosSettings),
-    );
+await _local.initialize(
+  settings: const InitializationSettings(
+    android: androidSettings,
+    iOS: iosSettings,
+  ),
+);
 
     const channel = AndroidNotificationChannel(
       highImportanceChannelId,
@@ -102,23 +105,23 @@ class PushNotificationsService {
       return;
     }
 
-    await _local.show(
-      dedupeId.hashCode & 0x7fffffff,
-      title,
-      body,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          highImportanceChannelId,
-          _channelName,
-          channelDescription: _channelDescription,
-          importance: Importance.max,
-          priority: Priority.high,
-          playSound: true,
-        ),
-        iOS: DarwinNotificationDetails(),
-      ),
-      payload: jsonEncode(data),
-    );
+await _local.show(
+  id: dedupeId.hashCode & 0x7fffffff,
+  title: title,
+  body: body,
+  notificationDetails: const NotificationDetails(
+    android: AndroidNotificationDetails(
+      highImportanceChannelId,
+      _channelName,
+      channelDescription: _channelDescription,
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+    ),
+    iOS: DarwinNotificationDetails(),
+  ),
+  payload: jsonEncode(data),
+);
   }
 
   Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
@@ -134,16 +137,16 @@ class PushNotificationsService {
       await ensureLocalNotificationsInitialized();
 
       if (!kIsWeb) {
-        await _local.initialize(
-          const InitializationSettings(
-            android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-            iOS: DarwinInitializationSettings(),
-          ),
-          onDidReceiveNotificationResponse: (NotificationResponse response) {
-            final payload = _decodePayload(response.payload);
-            _routeByPayload(payload, navigatorKey);
-          },
-        );
+await _local.initialize(
+  settings: const InitializationSettings(
+    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    iOS: DarwinInitializationSettings(),
+  ),
+  onDidReceiveNotificationResponse: (NotificationResponse response) {
+    final payload = _decodePayload(response.payload);
+    _routeByPayload(payload, navigatorKey);
+  },
+);
       }
 
       await _requestPermissions();
