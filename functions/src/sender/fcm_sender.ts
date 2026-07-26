@@ -1,0 +1,169 @@
+import * as admin from 'firebase-admin';
+
+import {deleteDeviceById, getActiveDeviceTokens} from './token_repository';
+import {logInfo, logWarn, logError} from '../utils/logger';
+
+function isInvalidTokenError(code: string): boolean {
+  return code.includes('registration-token-not-registered') || code.includes('invalid-registration-token');
+}
+
+export async function sendNotificationJob(job: FirebaseFirestore.DocumentData): Promise<void> {
+  const recipientUid = String(job.recipientUid || '').trim();
+  if (!recipientUid) {
+    logWarn('FCM sender skipped: recipientUid missing', {job});
+    return;
+  }
+
+  const rawTitle = String(job.notification?.title || '').trim();
+  const body = String(job.notification?.body || '').trim();
+  const title = rawTitle || (body ? 'منفذك' : '');
+  const eventType = String(job.data?.type || job.type || '');
+  const bookingId = String(job.data?.bookingId || job.bookingId || '');
+  const actorId = String(job.data?.actorId || job.actorId || '');
+  const screen = String(job.data?.screen || job.screen || '');
+  const dedupeKey = String(job.data?.dedupeKey || job.dedupeKey || '');
+
+  if (!title && !body) {
+    logWarn('FCM sender skipped: missing visible notification content', {
+      push_recipient_uid: recipientUid,
+      push_event_type: eventType,
+      push_booking_id: bookingId,
+      push_dedupe_key: dedupeKey,
+    });
+    return;
+  }
+
+  const devices = await getActiveDeviceTokens(recipientUid);
+
+  if (!devices.length) {
+    logInfo('FCM sender skipped: no active devices', {
+      push_recipient_uid: recipientUid,
+      push_event_type: eventType,
+      push_tokens_found: 0,
+      bookingId,
+    });
+    return;
+  }
+
+  logInfo('FCM sender tokens found', {
+    push_recipient_uid: recipientUid,
+    push_event_type: eventType,
+    push_tokens_found: devices.length,
+    bookingId,
+  });
+
+  devices.forEach((device, idx) => {
+    logInfo('FCM token send attempt', {
+      push_recipient_uid: recipientUid,
+      push_event_type: eventType,
+      tokenIndex: idx,
+      deviceId: device.deviceId,
+      platform: device.platform || '',
+      tokenPreview: `${device.token.slice(0, 12)}...`,
+    });
+  });
+
+  const tokensBeforeDedupe = devices.length;
+  const uniqueDevices = Array.from(
+    new Map(devices.map((device) => [device.token, device])).values()
+  );
+  const tokens = uniqueDevices.map((d) => d.token);
+  const tokensAfterDedupe = tokens.length;
+  if (tokensAfterDedupe < tokensBeforeDedupe) {
+    logInfo('duplicate_notification_skipped', {
+      push_event_type: eventType,
+      push_recipient_uid: recipientUid,
+      duplicate_notification_skipped: true,
+      push_tokens_before_dedupe: tokensBeforeDedupe,
+      push_tokens_after_dedupe: tokensAfterDedupe,
+    });
+  }
+  logInfo('FCM sender deduped tokens', {
+    push_recipient_uid: recipientUid,
+    push_event_type: eventType,
+    push_tokens_before_dedupe: tokensBeforeDedupe,
+    push_tokens_after_dedupe: tokensAfterDedupe,
+  });
+  const response = await admin.messaging().sendEachForMulticast({
+    tokens,
+    notification: {title, body},
+    data: {
+      type: eventType,
+      bookingId,
+      screen,
+      actorId,
+      dedupeKey,
+    },
+    android: {
+      priority: 'high',
+      notification: {
+        channelId: 'high_importance_channel',
+        sound: 'default',
+      },
+    },
+    apns: {
+      headers: {
+        'apns-push-type': 'alert',
+        'apns-priority': '10',
+      },
+      payload: {
+        aps: {
+          alert: {title, body},
+          sound: 'default',
+        },
+      },
+    },
+  });
+
+  const cleanups: Array<Promise<void>> = [];
+
+  response.responses.forEach((r, idx) => {
+    if (r.success) {
+      logInfo('FCM token send success', {
+        push_recipient_uid: recipientUid,
+        push_event_type: eventType,
+        push_send_success: true,
+        tokenIndex: idx,
+        deviceId: uniqueDevices[idx]?.deviceId || '',
+        messageId: r.messageId || '',
+      });
+      return;
+    }
+
+    const code = r.error?.code || 'unknown';
+    const message = r.error?.message || 'unknown';
+
+    logError('FCM token send failed', {
+      bookingId,
+      recipientUid,
+      push_recipient_uid: recipientUid,
+      push_event_type: eventType,
+      push_send_failure: true,
+      fcm_error_code: code,
+      tokenIndex: idx,
+      tokenPreview: `${tokens[idx]?.slice(0, 12) || ''}...`,
+      errorCode: code,
+      errorMessage: message,
+      fullError: String(r.error || ''),
+    });
+
+    if (isInvalidTokenError(code)) {
+      cleanups.push(deleteDeviceById(recipientUid, uniqueDevices[idx].deviceId));
+    }
+  });
+
+  if (cleanups.length) await Promise.all(cleanups);
+
+  logInfo('FCM sender finished', {
+    recipientUid,
+    push_recipient_uid: recipientUid,
+    push_event_type: eventType,
+    bookingId,
+    type: String(job.type || ''),
+    push_send_success: response.successCount > 0,
+    push_send_failure: response.failureCount > 0,
+    successCount: response.successCount,
+    failureCount: response.failureCount,
+    cleanedInvalidDevices: cleanups.length,
+  });
+}

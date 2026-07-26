@@ -1,0 +1,9 @@
+{
+  "name": "منفذك",
+  "short_name": "منفذك",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#111827",
+  "description": "Monfathak Flutter web shell for development."
+}

@@ -1,0 +1,1163 @@
+import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../services/input_digit_utils.dart';
+import '../services/money_utils.dart';
+import 'home_shell_screen.dart';
+import 'support_chat_screen.dart';
+
+class MapScreen extends StatelessWidget {
+  const MapScreen({super.key, required this.profile});
+
+  final Map<String, dynamic> profile;
+
+  double _commissionFromBooking(Map<String, dynamic> b) {
+    final amount = (b['amount'] is num) ? (b['amount'] as num).toDouble() : double.tryParse((b['amount'] ?? '0').toString()) ?? 0;
+    if (b['commission'] is num) return (b['commission'] as num).toDouble();
+    final entered = double.tryParse((b['price'] ?? '').toString());
+    return entered ?? 0;
+  }
+
+  String _safeString(dynamic value, {String fallback = ''}) {
+    if (value == null) return fallback;
+    final text = value.toString().trim();
+    return text.isEmpty ? fallback : text;
+  }
+
+  double _safeDouble(dynamic value, {double fallback = 0}) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  void _showControlledMessage(BuildContext context, String message) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openBookingFromMapTap({
+    required BuildContext context,
+    required QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    required String role,
+    required String uid,
+  }) async {
+    debugPrint('MAP_BOOKING_TAP');
+    try {
+      final raw = doc.data();
+      final bookingDocId = _safeString(doc.id, fallback: '');
+      final bookingId = _safeString(raw['bookingId'], fallback: bookingDocId);
+      final clientId = _safeString(raw['clientId']);
+      final createdById = _safeString(raw['createdById']);
+      final outletId = _safeString(raw['outletId']);
+      final status = _safeString(raw['status'], fallback: 'pending');
+      final amount = _safeDouble(raw['amount']);
+      final price = _safeDouble(raw['price']);
+      final priceProposalsRaw = raw['priceProposals'];
+      final proposalsCount = (priceProposalsRaw is List) ? priceProposalsRaw.length : 0;
+
+      debugPrint('MAP_BOOKING_TAP_DATA bookingId=$bookingId docId=$bookingDocId clientId=$clientId createdById=$createdById outletId=$outletId status=$status amount=$amount price=$price proposals=$proposalsCount');
+
+      if (bookingDocId.isEmpty) {
+        _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+        return;
+      }
+
+      debugPrint('MAP_BOOKING_OPEN_START');
+      final fresh = await FirebaseFirestore.instance.collection('bookings').doc(bookingDocId).get().timeout(const Duration(seconds: 8));
+      if (!fresh.exists || fresh.data() == null) {
+        _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+        return;
+      }
+
+      final freshData = fresh.data()!;
+      final lat = _safeDouble(freshData['clientLat'], fallback: double.nan);
+      final lng = _safeDouble(freshData['clientLng'], fallback: double.nan);
+      final hasValidCoordinates = lat.isFinite && lng.isFinite && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+      if (!hasValidCoordinates) {
+        _showControlledMessage(context, 'تعذر تحديد الإحداثيات بدقة، سيتم فتح تفاصيل الطلب بشكل آمن.');
+      }
+
+      if (!context.mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => BookingMapDetailsScreen(
+            bookingDocId: bookingDocId,
+            role: role,
+            currentUserId: uid,
+          ),
+        ),
+      );
+    } on FirebaseException catch (error, stackTrace) {
+      debugPrint('MAP_BOOKING_OPEN_FAILED_CONTROLLED: $error');
+      debugPrint('$stackTrace');
+      _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+    } on TimeoutException catch (error, stackTrace) {
+      debugPrint('MAP_BOOKING_OPEN_FAILED_CONTROLLED: $error');
+      debugPrint('$stackTrace');
+      _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+    } catch (error, stackTrace) {
+      debugPrint('MAP_BOOKING_OPEN_FAILED_CONTROLLED: $error');
+      debugPrint('$stackTrace');
+      _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    debugPrint('MAP_TAB_OPEN');
+    FirebaseCrashlytics.instance.log('map_tab_open');
+    FirebaseCrashlytics.instance.setCustomKey('map_open_source', 'map_tab');
+    final uid = _safeString(profile['uid']);
+    final role = _safeString(profile['role']);
+    final field = role == 'outlet' ? 'outletId' : 'clientId';
+    final stream = FirebaseFirestore.instance
+        .collection('bookings')
+        .where(field, isEqualTo: uid)
+        .where('status', whereIn: ['accepted', 'in_progress', 'awaiting_provider_code'])
+        .snapshots();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('منفذك - الخريطة')),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: stream,
+        builder: (context, snapshot) {
+          debugPrint('MAP_BOOKINGS_LOAD_START');
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            debugPrint('MAP_BOOKING_OPEN_FAILED_CONTROLLED: ${snapshot.error}');
+            return const Center(child: Text('تعذر تحميل الطلبات حالياً.'));
+          }
+          final docs = snapshot.data?.docs ?? const [];
+          debugPrint('MAP_BOOKINGS_LOAD_SUCCESS count=${docs.length}');
+          if (docs.isEmpty) {
+            return const Center(
+              child: Text('ليس لديك طلبات حالية'),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: docs.length,
+            itemBuilder: (_, i) {
+              final b = docs[i].data();
+              final safeAmount = _safeDouble(b['amount']);
+              return Card(
+                child: ListTile(
+                  title: const Text('طلب نشط'),
+                  subtitle: Text(
+                    'الحالة: ${_safeString(b['status'], fallback: 'pending')} • المبلغ: ${MoneyUtils.iqdWithWords(safeAmount)} • العمولة: ${MoneyUtils.iqdWithWords(_commissionFromBooking(b))}',
+                  ),
+                  leading: const Icon(Icons.map_rounded),
+                  onTap: () async {
+                    await _openBookingFromMapTap(
+                      context: context,
+                      doc: docs[i],
+                      role: role,
+                      uid: uid,
+                    );
+                  },
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class BookingMapDetailsScreen extends StatefulWidget {
+  const BookingMapDetailsScreen({
+    super.key,
+    required this.bookingDocId,
+    required this.role,
+    required this.currentUserId,
+  });
+
+  final String bookingDocId;
+  final String role;
+  final String currentUserId;
+
+  @override
+  State<BookingMapDetailsScreen> createState() => _BookingMapDetailsScreenState();
+}
+
+class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
+  static const String _rashidOutletName = 'منفذ الراشد';
+
+  final TextEditingController _completionCodeController = TextEditingController();
+  Timer? _countdownTimer;
+  int _codeSecondsLeft = 0;
+  String? _visibleSecretCode;
+  bool _completionHandled = false;
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    _completionCodeController.dispose();
+    super.dispose();
+  }
+
+  String _normalizedName(Object? value) {
+    return (value ?? '').toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  Future<bool> _isRashidOutletUser(String uid) async {
+    if (uid.trim().isEmpty) return false;
+    try {
+      final snap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final data = snap.data();
+      final role = (data?['role'] ?? '').toString();
+      if (role != 'outlet') return false;
+      final target = _normalizedName(_rashidOutletName);
+      return [
+        data?['outletName'],
+        data?['fullName'],
+        data?['name'],
+      ].any((name) => _normalizedName(name) == target);
+    } catch (e, stackTrace) {
+      FirebaseCrashlytics.instance.recordError(e, stackTrace, fatal: false);
+      return false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection('bookings').doc(widget.bookingDocId).snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        final booking = snapshot.data?.data();
+        FirebaseCrashlytics.instance.setCustomKey('map_open_source', 'tracking_button');
+        FirebaseCrashlytics.instance.setCustomKey('booking_id', widget.bookingDocId);
+        FirebaseCrashlytics.instance.setCustomKey('current_user_role', widget.role);
+        if (booking == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('تفاصيل الطلب')),
+            body: const Center(child: Text('تعذر تحميل الطلب.')),
+          );
+        }
+
+        final bookingId = (booking['bookingId'] ?? widget.bookingDocId).toString();
+        final type = (booking['type'] ?? '').toString();
+        final amount = (booking['amount'] ?? 0).toString();
+        final price = (booking['price'] ?? 0).toString();
+        final status = (booking['status'] ?? '').toString();
+        _maybeHandleCompletionTransition(booking, status);
+        final summary = _financialSummary(
+          type: type,
+          amount: amount,
+          price: price,
+          booking: booking,
+          currentUserId: widget.currentUserId,
+        );
+        final clientName = (booking['clientName'] ?? '').toString();
+        final outletName = (booking['outletName'] ?? '').toString();
+
+        final client = _extractLatLng(booking, candidateRoots: ['clientLocation', 'client']);
+        final outlet = _extractLatLng(booking, candidateRoots: ['outletLocation', 'outlet']);
+
+        return Scaffold(
+          appBar: AppBar(title: const Text('تفاصيل الطلب')),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              SizedBox(
+                height: 280,
+                child: _LiveTripMap(client: client, outlet: outlet),
+              ),
+              if (client == null && outlet == null)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'تعذر تحديد الإحداثيات الدقيقة للطرفين حالياً، لكن شاشة الطلب ما زالت متاحة.',
+                    style: TextStyle(color: Colors.redAccent),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              if (client != null || outlet != null)
+                FilledButton.icon(
+                  onPressed: () => _openMapLink(context, client: client, outlet: outlet),
+                  icon: const Icon(Icons.open_in_new_rounded),
+                  label: const Text('فتح الاتجاهات في خرائط Google'),
+                ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SupportChatScreen(
+                        threadPath: 'booking_chats/$bookingId/messages',
+                        currentUserId: widget.currentUserId,
+                        title: widget.role == 'client' ? 'مراسلة المنفذ' : 'مراسلة العميل',
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.chat_bubble_outline_rounded),
+                label: Text(widget.role == 'client' ? 'مراسلة المنفذ' : 'مراسلة العميل'),
+              ),
+              const SizedBox(height: 12),
+              _buildCompletionSection(context, booking, status),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('أطراف الطلب', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      if (widget.role == 'outlet' && clientName.isNotEmpty) Text('العميل: $clientName'),
+                      if (widget.role == 'client' && outletName.isNotEmpty) Text('المنفذ: $outletName'),
+                    ],
+                  ),
+                ),
+              ),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('الملخص المالي', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      const Text('الاستلام والتسليم', style: TextStyle(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      Text('سلّم: ${MoneyUtils.iqdWithWords(double.tryParse(summary.$1) ?? 0)}'),
+                      Text('استلم: ${MoneyUtils.iqdWithWords(double.tryParse(summary.$2) ?? 0)}'),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => _cancelBookingWithConfirmation(status: status),
+                icon: const Icon(Icons.cancel_outlined),
+                label: const Text('إلغاء الطلب'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCompletionSection(BuildContext context, Map<String, dynamic> booking, String status) {
+    final isRequester = (booking['clientId'] ?? '').toString() == widget.currentUserId;
+    final isProvider = (booking['outletId'] ?? '').toString() == widget.currentUserId;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('إكمال الطلب', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            if (isRequester && status == 'accepted')
+              FilledButton(
+                onPressed: _markArrivalWithoutShowingCode,
+                child: const Text('أنا وصلت'),
+              ),
+            if (isRequester && status == 'awaiting_provider_code') ...[
+              FilledButton.icon(
+                onPressed: () => _openSecretCodeSheet(booking),
+                icon: const Icon(Icons.visibility_rounded),
+                label: const Text('إظهار الرمز السري'),
+              ),
+            ],
+            if (isProvider && status == 'awaiting_provider_code') ...[
+              const SizedBox(height: 8),
+              TextField(
+                controller: _completionCodeController,
+                keyboardType: TextInputType.number,
+                inputFormatters: const [DigitOnlyInputFormatter()],
+                decoration: const InputDecoration(labelText: 'أدخل رمز الإكمال'),
+              ),
+              const SizedBox(height: 8),
+              FilledButton(
+                onPressed: _confirmCompletion,
+                child: const Text('تأكيد إكمال الطلب'),
+              ),
+            ],
+            if (status == 'completed')
+              const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Text('تم إكمال الطلب بنجاح.', style: TextStyle(color: Colors.green)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _markArrivalWithoutShowingCode() async {
+    await FirebaseFirestore.instance.collection('bookings').doc(widget.bookingDocId).update({
+      'status': 'awaiting_provider_code',
+      'arrivalMarkedAt': FieldValue.serverTimestamp(),
+      'arrivalMarkedBy': widget.currentUserId,
+      'completionCode': FieldValue.delete(),
+      'completionCodeExpiresAt': FieldValue.delete(),
+      'completionCodeIssuedAt': FieldValue.delete(),
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم تسجيل الوصول. يمكنك الآن الضغط على "إظهار الرمز السري".')),
+    );
+  }
+
+  Future<(String, DateTime)> _generateNewSecretCode() async {
+    final code = (100000 + (DateTime.now().millisecondsSinceEpoch % 900000)).toString();
+    final expiresAt = DateTime.now().add(const Duration(seconds: 30));
+    await FirebaseFirestore.instance.collection('bookings').doc(widget.bookingDocId).update({
+      'status': 'awaiting_provider_code',
+      'arrivalMarkedBy': widget.currentUserId,
+      'completionCode': code,
+      'completionCodeExpiresAt': Timestamp.fromDate(expiresAt),
+      'completionCodeIssuedAt': FieldValue.serverTimestamp(),
+    });
+    return (code, expiresAt);
+  }
+
+  void _startCountdown(DateTime expiresAt, void Function(void Function()) setModalState) {
+    _countdownTimer?.cancel();
+    void tick() {
+      final diff = expiresAt.difference(DateTime.now()).inSeconds;
+      setModalState(() => _codeSecondsLeft = diff < 0 ? 0 : diff);
+    }
+    tick();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+  }
+
+  Future<void> _openSecretCodeSheet(Map<String, dynamic> booking) async {
+    final status = (booking['status'] ?? '').toString();
+    final isRequester = (booking['clientId'] ?? '').toString() == widget.currentUserId;
+    if (!isRequester || status != 'awaiting_provider_code') return;
+
+    final existingCode = (booking['completionCode'] ?? '').toString().trim();
+    final existingExpiryRaw = booking['completionCodeExpiresAt'];
+    DateTime? existingExpiry;
+    if (existingExpiryRaw is Timestamp) {
+      existingExpiry = existingExpiryRaw.toDate();
+    }
+
+    _visibleSecretCode = existingCode.isEmpty ? null : existingCode;
+    if (existingExpiry != null) {
+      _codeSecondsLeft = existingExpiry.difference(DateTime.now()).inSeconds.clamp(0, 1 << 30).toInt();
+    } else {
+      _codeSecondsLeft = 0;
+    }
+    final shouldGenerateNow = _visibleSecretCode == null || _codeSecondsLeft <= 0;
+    if (shouldGenerateNow) {
+      final generated = await _generateNewSecretCode();
+      _visibleSecretCode = generated.$1;
+      existingExpiry = generated.$2;
+      _codeSecondsLeft = existingExpiry.difference(DateTime.now()).inSeconds.clamp(0, 1 << 30).toInt();
+    }
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setModalState) {
+          if (existingExpiry != null && _codeSecondsLeft > 0 && _countdownTimer == null) {
+            _startCountdown(existingExpiry!, setModalState);
+          }
+          return AlertDialog(
+            title: const Text('الرمز السري المؤقت'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'تحذير قانوني ومالي: مشاركة الرمز تعني إقرارًا رسميًا من صاحب الطلب بأنه استلم المبلغ بالكامل وأن العملية المالية تمت بنجاح.',
+                  style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF8E8),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFF2D39C)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _visibleSecretCode == null ? 'لم يتم إنشاء رمز بعد' : 'الرمز الحالي: $_visibleSecretCode',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      Text('الوقت المتبقي: ${_codeSecondsLeft}s'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                FilledButton.icon(
+                  onPressed: _codeSecondsLeft > 0
+                      ? null
+                      : () async {
+                          final result = await _generateNewSecretCode();
+                          _visibleSecretCode = result.$1;
+                          existingExpiry = result.$2;
+                          _startCountdown(existingExpiry!, setModalState);
+                          setModalState(() {});
+                        },
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: Text(_codeSecondsLeft > 0 ? 'انتظر انتهاء العداد للتجديد' : 'تجديد الرمز (30 ثانية)'),
+                ),
+                const Text(
+                  'هذا الرمز مؤقت وسينتهي تلقائيًا عند انتهاء العدّاد.',
+                  style: TextStyle(color: Colors.black54),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('إغلاق'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+  }
+
+  void _maybeHandleCompletionTransition(Map<String, dynamic> booking, String status) {
+    if (status != 'completed' || _completionHandled) return;
+    _completionHandled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await _openRatingDialogAfterCompletion(booking);
+      if (!mounted) return;
+      HomeShellScreen.requestTab(0);
+      Navigator.of(context).maybePop();
+    });
+  }
+
+  Future<void> _openRatingDialogAfterCompletion(Map<String, dynamic> booking) async {
+    int stars = 5;
+    final noteController = TextEditingController();
+    final targetRoleLabel = _rateTargetRoleLabel(booking);
+    final targetRoleValue = _rateTargetRoleValue(booking);
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setStateDialog) => AlertDialog(
+            title: Text('تقييم $targetRoleLabel'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 2,
+                    children: List.generate(5, (index) {
+                      final selected = index < stars;
+                      return IconButton(
+                        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                        padding: const EdgeInsets.all(6),
+                        onPressed: () => setStateDialog(() => stars = index + 1),
+                        icon: Icon(
+                          selected ? Icons.star_rounded : Icons.star_border_rounded,
+                          color: selected ? Colors.amber : Colors.grey,
+                        ),
+                      );
+                    }),
+                  ),
+                  TextField(
+                    controller: noteController,
+                    decoration: const InputDecoration(labelText: 'ملاحظات (اختياري)'),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('تخطي'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('إرسال التقييم'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (ok != true || !mounted) return;
+
+      final bookingId = (booking['bookingId'] ?? widget.bookingDocId).toString();
+      final fromUserId = widget.currentUserId;
+      final toUserId = ((booking['clientId'] ?? '').toString() == fromUserId)
+          ? (booking['outletId'] ?? '').toString()
+          : (booking['clientId'] ?? '').toString();
+      if (toUserId.isEmpty) return;
+
+      final existing = await FirebaseFirestore.instance
+          .collection('ratings')
+          .where('bookingId', isEqualTo: bookingId)
+          .where('fromUserId', isEqualTo: fromUserId)
+          .limit(1)
+          .get();
+      if (existing.docs.isNotEmpty) return;
+
+      await FirebaseFirestore.instance.collection('ratings').add({
+        'bookingId': bookingId,
+        'fromUserId': fromUserId,
+        'toUserId': toUserId,
+        'toUserRole': targetRoleValue,
+        'stars': stars,
+        'adminOnlyNote': noteController.text.trim(),
+        'publicNote': '',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('شكراً، تم إرسال تقييمك.')));
+    } finally {
+      noteController.dispose();
+    }
+  }
+
+  String _rateTargetRoleLabel(Map<String, dynamic> booking) {
+    final isClient = (booking['clientId'] ?? '').toString() == widget.currentUserId;
+    return isClient ? 'المنفذ' : 'العميل';
+  }
+
+  String _rateTargetRoleValue(Map<String, dynamic> booking) {
+    final isClient = (booking['clientId'] ?? '').toString() == widget.currentUserId;
+    return isClient ? 'outlet' : 'client';
+  }
+
+  Future<void> _confirmCompletion() async {
+    final enteredCode = InputDigitUtils.digitsOnly(_completionCodeController.text);
+    if (enteredCode.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال الرمز أولاً')));
+      return;
+    }
+    try {
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final ref = FirebaseFirestore.instance.collection('bookings').doc(widget.bookingDocId);
+        final snap = await tx.get(ref);
+        final data = snap.data() ?? <String, dynamic>{};
+        final status = (data['status'] ?? '').toString();
+        final storedCode = (data['completionCode'] ?? '').toString();
+        final expiresRaw = data['completionCodeExpiresAt'];
+        final expiresAt = expiresRaw is Timestamp ? expiresRaw.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
+        if (status != 'awaiting_provider_code') {
+          throw FirebaseException(plugin: 'cloud_firestore', code: 'invalid-state', message: 'الحالة الحالية لا تسمح بالإكمال.');
+        }
+        if (DateTime.now().isAfter(expiresAt)) {
+          throw FirebaseException(plugin: 'cloud_firestore', code: 'code-expired', message: 'انتهت صلاحية الرمز. اطلب رمزًا جديدًا.');
+        }
+        if (storedCode.isEmpty || enteredCode != storedCode) {
+          throw FirebaseException(plugin: 'cloud_firestore', code: 'invalid-code', message: 'الرمز غير صحيح.');
+        }
+        tx.update(ref, {
+          'status': 'completed',
+          'completedAt': FieldValue.serverTimestamp(),
+          'completedBy': widget.currentUserId,
+          'completionCode': FieldValue.delete(),
+          'completionCodeExpiresAt': FieldValue.delete(),
+        });
+      });
+      if (!mounted) return;
+      _completionCodeController.clear();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إكمال الطلب بنجاح.')));
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'تعذر إكمال الطلب.')));
+    }
+  }
+
+  Future<void> _cancelBookingWithConfirmation({required String status}) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('إلغاء الطلب'),
+        content: const Text('هل أنت متأكد من إلغاء الطلب؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('نعم'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    final uid = widget.currentUserId;
+    final isAfterAcceptance = status == 'accepted' || status == 'in_progress' || status == 'awaiting_provider_code';
+    final db = FirebaseFirestore.instance;
+    final bookingRef = db.collection('bookings').doc(widget.bookingDocId);
+    final rashidUnlimitedCancellation = await _isRashidOutletUser(uid);
+    FirebaseCrashlytics.instance.setCustomKey('rashid_unlimited_cancellation', rashidUnlimitedCancellation);
+
+    if (!isAfterAcceptance) {
+      await bookingRef.update({
+        'status': 'cancelled',
+        'cancelledAt': FieldValue.serverTimestamp(),
+        'cancelledBy': uid,
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إلغاء الطلب')));
+      Navigator.of(context).maybePop();
+      return;
+    }
+
+    final now = DateTime.now();
+    final dayKey = '${now.year}-${now.month}-${now.day}';
+    final dailyRef = db.collection('bookingCancellationDaily').doc('${uid}_$dayKey');
+
+    try {
+      await db.runTransaction((tx) async {
+        final bookingSnap = await tx.get(bookingRef);
+        final currentStatus = (bookingSnap.data()?['status'] ?? '').toString();
+        final acceptedState = currentStatus == 'accepted' || currentStatus == 'in_progress' || currentStatus == 'awaiting_provider_code';
+        if (!acceptedState) {
+          tx.update(bookingRef, {
+            'status': 'cancelled',
+            'cancelledAt': FieldValue.serverTimestamp(),
+            'cancelledBy': uid,
+          });
+          return;
+        }
+
+        var currentCount = 0;
+        if (!rashidUnlimitedCancellation) {
+          final dailySnap = await tx.get(dailyRef);
+          currentCount = (dailySnap.data()?['count'] as num?)?.toInt() ?? 0;
+        }
+        if (!rashidUnlimitedCancellation && currentCount >= 3) {
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'cancel-limit',
+            message: 'تم الوصول للحد اليومي للإلغاء بعد القبول (3 مرات).',
+          );
+        }
+
+        tx.update(bookingRef, {
+          'status': 'cancelled',
+          'cancelledAt': FieldValue.serverTimestamp(),
+          'cancelledBy': uid,
+        });
+        if (!rashidUnlimitedCancellation) {
+          tx.set(dailyRef, {
+            'userId': uid,
+            'dayKey': dayKey,
+            'count': currentCount + 1,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إلغاء الطلب')));
+      Navigator.of(context).maybePop();
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'تعذر إلغاء الطلب')));
+    }
+  }
+
+  Future<void> _openMapLink(BuildContext context, {LatLng? client, LatLng? outlet}) async {
+    final rawDestination = widget.role == 'client' ? (outlet ?? client) : (client ?? outlet);
+    final rawOrigin = widget.role == 'client' ? client : outlet;
+    final destination = _isValidLatLng(rawDestination) ? rawDestination : null;
+    final origin = _isValidLatLng(rawOrigin) ? rawOrigin : null;
+
+    if (destination == null) {
+      FirebaseCrashlytics.instance.log('map_directions_blocked_invalid_destination');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لا توجد إحداثيات صالحة لفتح الاتجاهات.')),
+        );
+      }
+      return;
+    }
+
+    final googleMapsAppUri = Uri.parse(
+      origin != null
+          ? 'comgooglemaps://?saddr=${origin.latitude},${origin.longitude}&daddr=${destination.latitude},${destination.longitude}&directionsmode=driving'
+          : 'comgooglemaps://?q=${destination.latitude},${destination.longitude}&center=${destination.latitude},${destination.longitude}&zoom=16',
+    );
+    final appleMapsUri = Uri.parse(
+      origin != null
+          ? 'http://maps.apple.com/?saddr=${origin.latitude},${origin.longitude}&daddr=${destination.latitude},${destination.longitude}&dirflg=d'
+          : 'http://maps.apple.com/?q=${destination.latitude},${destination.longitude}',
+    );
+    final webFallbackUri = Uri.parse(
+      origin != null
+          ? 'https://www.google.com/maps/dir/?api=1&origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&travelmode=driving'
+          : 'https://www.google.com/maps/search/?api=1&query=${destination.latitude},${destination.longitude}',
+    );
+
+    final candidates = <({String source, Uri uri, bool requiresCanLaunch})>[
+      (source: 'google_maps_app', uri: googleMapsAppUri, requiresCanLaunch: true),
+      (source: 'apple_maps', uri: appleMapsUri, requiresCanLaunch: false),
+      (source: 'google_maps_web', uri: webFallbackUri, requiresCanLaunch: false),
+    ];
+
+    for (final candidate in candidates) {
+      try {
+        FirebaseCrashlytics.instance.setCustomKey('map_directions_launch_source', candidate.source);
+        if (candidate.requiresCanLaunch && !await canLaunchUrl(candidate.uri)) {
+          debugPrint('[MAP DIRECTIONS] ${candidate.source} unavailable');
+          continue;
+        }
+
+        final launched = await launchUrl(candidate.uri, mode: LaunchMode.externalApplication);
+        FirebaseCrashlytics.instance.setCustomKey('map_directions_launch_success', launched);
+        debugPrint('[MAP DIRECTIONS] source=${candidate.source} success=$launched');
+        if (launched) return;
+      } catch (error, stackTrace) {
+        debugPrint('[MAP DIRECTIONS] ${candidate.source} failed: $error');
+        FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+      }
+    }
+
+    FirebaseCrashlytics.instance.setCustomKey('map_directions_launch_success', false);
+    FirebaseCrashlytics.instance.recordError(
+      StateError('Failed to launch Google Maps, Apple Maps, or browser fallback for directions.'),
+      StackTrace.current,
+      fatal: false,
+    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح الاتجاهات. تأكد من توفر خرائط Google أو خرائط Apple ثم حاول مرة أخرى.')),
+      );
+    }
+  }
+
+  bool _isValidLatLng(LatLng? point) {
+    if (point == null) return false;
+    if (point.latitude.isNaN || point.longitude.isNaN) return false;
+    if (point.latitude.isInfinite || point.longitude.isInfinite) return false;
+    if (point.latitude < -90 || point.latitude > 90) return false;
+    if (point.longitude < -180 || point.longitude > 180) return false;
+    return true;
+  }
+
+  LatLng? _extractLatLng(Map<String, dynamic> booking, {required List<String> candidateRoots}) {
+    for (final root in candidateRoots) {
+      final node = booking[root];
+      if (node is Map) {
+        final lat = _num(node['lat']);
+        final lng = _num(node['lng']);
+        if (_isValidCoordinate(lat, lng)) return LatLng(lat!, lng!);
+      }
+    }
+
+    final latKeys = ['${candidateRoots.first}Lat', '${candidateRoots.first}_lat', candidateRoots.first == 'clientLocation' ? 'clientLat' : 'outletLat'];
+    final lngKeys = ['${candidateRoots.first}Lng', '${candidateRoots.first}_lng', candidateRoots.first == 'clientLocation' ? 'clientLng' : 'outletLng'];
+
+    for (int i = 0; i < latKeys.length; i++) {
+      final lat = _num(booking[latKeys[i]]);
+      final lng = _num(booking[lngKeys[i]]);
+      if (_isValidCoordinate(lat, lng)) return LatLng(lat!, lng!);
+    }
+    return null;
+  }
+
+  bool _isValidCoordinate(double? lat, double? lng) {
+    if (lat == null || lng == null) return false;
+    if (lat.isNaN || lng.isNaN || lat.isInfinite || lng.isInfinite) return false;
+    if (lat < -90 || lat > 90) return false;
+    if (lng < -180 || lng > 180) return false;
+    return true;
+  }
+
+  double? _num(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  (String, String) _financialSummary({
+    required String type,
+    required String amount,
+    required String price,
+    required Map<String, dynamic> booking,
+    required String currentUserId,
+  }) {
+    final amountValue = double.tryParse(amount) ?? 0;
+    final commission = (booking['commission'] is num)
+        ? (booking['commission'] as num).toDouble()
+        : double.tryParse((booking['price'] ?? '0').toString()) ?? 0;
+    final acceptedOutletId = (booking['outletId'] ?? '').toString();
+    final isAcceptedOutlet = acceptedOutletId.isNotEmpty && currentUserId == acceptedOutletId;
+
+    final withdrawOutletReceive = amountValue;
+    final withdrawOutletDeliver = amountValue - commission;
+    final depositOutletReceive = amountValue + commission;
+    final depositOutletDeliver = amountValue;
+    final dischargeOutletReceive = amountValue;
+    final dischargeOutletDeliver = amountValue + commission;
+
+    double deliver;
+    double receive;
+    switch (type) {
+      case 'withdraw':
+        deliver = isAcceptedOutlet ? withdrawOutletDeliver : withdrawOutletReceive;
+        receive = isAcceptedOutlet ? withdrawOutletReceive : withdrawOutletDeliver;
+        break;
+      case 'deposit':
+        deliver = isAcceptedOutlet ? depositOutletDeliver : depositOutletReceive;
+        receive = isAcceptedOutlet ? depositOutletReceive : depositOutletDeliver;
+        break;
+      case 'discharge':
+        deliver = isAcceptedOutlet ? dischargeOutletDeliver : dischargeOutletReceive;
+        receive = isAcceptedOutlet ? dischargeOutletReceive : dischargeOutletDeliver;
+        break;
+      default:
+        deliver = amountValue;
+        receive = amountValue;
+    }
+    return ('${deliver.toStringAsFixed(0)}', '${receive.toStringAsFixed(0)}');
+  }
+}
+
+class _LiveTripMap extends StatefulWidget {
+  const _LiveTripMap({required this.client, required this.outlet});
+
+  final LatLng? client;
+  final LatLng? outlet;
+
+  @override
+  State<_LiveTripMap> createState() => _LiveTripMapState();
+}
+
+class _LiveTripMapState extends State<_LiveTripMap> {
+  static const MethodChannel _mapsChannel = MethodChannel('manfathak/maps');
+  GoogleMapController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _logNativeMapDiagnostics();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final validClient = _safeLatLng(widget.client);
+    final validOutlet = _safeLatLng(widget.outlet);
+    final target = validClient ?? validOutlet;
+    FirebaseCrashlytics.instance.setCustomKey('map_plugin_used', 'google_maps_flutter');
+    FirebaseCrashlytics.instance.setCustomKey('client_lat_lng_validity', validClient != null ? 'valid' : 'missing_or_invalid');
+    FirebaseCrashlytics.instance.setCustomKey('outlet_lat_lng_validity', validOutlet != null ? 'valid' : 'missing_or_invalid');
+    FirebaseCrashlytics.instance.setCustomKey('has_client_location', validClient != null);
+    FirebaseCrashlytics.instance.setCustomKey('has_outlet_location', validOutlet != null);
+    FirebaseCrashlytics.instance.setCustomKey('markers_count', (validClient == null ? 0 : 1) + (validOutlet == null ? 0 : 1));
+    FirebaseCrashlytics.instance.setCustomKey('initial_camera_valid', target != null);
+    FirebaseCrashlytics.instance.setCustomKey('google_map_created', false);
+    FirebaseCrashlytics.instance.log('map_widget_build_start');
+    if (target == null) {
+      FirebaseCrashlytics.instance.log('map_open_blocked_invalid_coordinates');
+      return const _MapUnavailablePlaceholder(
+        message: 'لا توجد إحداثيات صالحة لعرض الخريطة لهذا الطلب.',
+      );
+    }
+
+    final markers = <Marker>{
+      if (validClient != null)
+        Marker(
+          markerId: const MarkerId('client'),
+          position: validClient,
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          infoWindow: const InfoWindow(title: 'موقع العميل'),
+        ),
+      if (validOutlet != null)
+        Marker(
+          markerId: const MarkerId('outlet'),
+          position: validOutlet,
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+          infoWindow: const InfoWindow(title: 'موقع المنفذ'),
+        ),
+    };
+
+    final polylines = <Polyline>{
+      if (validClient != null && validOutlet != null)
+        Polyline(
+          polylineId: const PolylineId('route_line'),
+          points: [validClient, validOutlet],
+          color: Colors.green,
+          width: 4,
+        ),
+    };
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: kIsWeb
+          ? Container(
+              color: const Color(0xFFF3F4F6),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.all(16),
+              child: const Text(
+                'الخريطة التفاعلية غير متاحة حالياً على الويب. استخدم زر الاتجاهات.',
+                textAlign: TextAlign.center,
+              ),
+            )
+          : GoogleMap(
+              initialCameraPosition: CameraPosition(target: target, zoom: 16),
+              mapType: MapType.normal,
+              myLocationButtonEnabled: false,
+              compassEnabled: true,
+              zoomControlsEnabled: false,
+              markers: markers,
+              polylines: polylines,
+              onMapCreated: (c) {
+                debugPrint('[MAP INIT] map created');
+                FirebaseCrashlytics.instance.log('map_widget_created');
+                FirebaseCrashlytics.instance.setCustomKey('google_map_created', true);
+                FirebaseCrashlytics.instance.setCustomKey('markers_count', markers.length);
+                _controller = c;
+                _fitBounds();
+              },
+      ),
+    );
+  }
+
+  Future<void> _logNativeMapDiagnostics() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+
+    try {
+      final diagnostics = await _mapsChannel.invokeMapMethod<String, dynamic>('diagnostics') ?? const {};
+      final keyPresent = diagnostics['ios_maps_key_present'] == true;
+      final keySource = (diagnostics['ios_maps_key_source'] ?? 'unknown').toString();
+      final keyLength = diagnostics['ios_maps_key_length'] is int ? diagnostics['ios_maps_key_length'] as int : 0;
+      final rawPrefix = (diagnostics['ios_maps_key_prefix_only'] ?? '').toString();
+      final keyPrefix = rawPrefix.length > 6 ? rawPrefix.substring(0, 6) : rawPrefix;
+      final sdkInitialized = diagnostics['map_sdk_initialized'] == true;
+      final possibleAuthIssue = diagnostics['map_tiles_possible_auth_issue'] == true;
+
+      FirebaseCrashlytics.instance.setCustomKey('map_plugin_used', 'google_maps_flutter');
+      FirebaseCrashlytics.instance.setCustomKey('ios_maps_key_present', keyPresent);
+      FirebaseCrashlytics.instance.setCustomKey('ios_maps_key_source', keySource);
+      FirebaseCrashlytics.instance.setCustomKey('ios_maps_key_length', keyLength);
+      FirebaseCrashlytics.instance.setCustomKey('ios_maps_key_prefix_only', keyPrefix);
+      FirebaseCrashlytics.instance.setCustomKey('map_sdk_initialized', sdkInitialized);
+      FirebaseCrashlytics.instance.setCustomKey('map_tiles_possible_auth_issue', possibleAuthIssue);
+      FirebaseCrashlytics.instance.log(
+        'ios_google_maps_diagnostics keyPresent=$keyPresent source=$keySource length=$keyLength sdkInitialized=$sdkInitialized',
+      );
+      debugPrint(
+        '[MAP DIAGNOSTICS] plugin=google_maps_flutter keyPresent=$keyPresent source=$keySource keyLength=$keyLength keyPrefix=$keyPrefix sdkInitialized=$sdkInitialized',
+      );
+      if (!keyPresent || !sdkInitialized) {
+        FirebaseCrashlytics.instance.recordError(
+          StateError('iOS Google Maps SDK is not initialized with a valid Maps SDK for iOS key. Check bundle id restrictions, API restrictions, and billing.'),
+          StackTrace.current,
+          fatal: false,
+        );
+      }
+    } catch (error, stackTrace) {
+      debugPrint('[MAP DIAGNOSTICS] native diagnostics failed: $error');
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+    }
+  }
+
+  Future<void> _fitBounds() async {
+    if (_controller == null) return;
+
+    final client = _safeLatLng(widget.client);
+    final outlet = _safeLatLng(widget.outlet);
+
+    await Future.delayed(const Duration(milliseconds: 220));
+    if (!mounted) return;
+
+    if (client == null && outlet == null) return;
+
+    if (client == null || outlet == null) {
+      final point = client ?? outlet;
+      if (point != null) {
+        await _controller?.animateCamera(CameraUpdate.newLatLngZoom(point, 16));
+      }
+      return;
+    }
+
+    final latDiff = (client.latitude - outlet.latitude).abs();
+    final lngDiff = (client.longitude - outlet.longitude).abs();
+    final isVeryClose = latDiff < 0.00008 && lngDiff < 0.00008;
+    if (isVeryClose) {
+      await _controller?.animateCamera(CameraUpdate.newLatLngZoom(client, 18));
+      return;
+    }
+
+    final south = math.min(client.latitude, outlet.latitude);
+    final north = math.max(client.latitude, outlet.latitude);
+    final west = math.min(client.longitude, outlet.longitude);
+    final east = math.max(client.longitude, outlet.longitude);
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(south, west),
+      northeast: LatLng(north, east),
+    );
+
+    try {
+      await _controller?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 72));
+    } catch (error) {
+      debugPrint('[MAP INIT] fit bounds failed: $error');
+      await _controller?.animateCamera(CameraUpdate.newLatLngZoom(client, 16));
+    }
+  }
+
+  LatLng? _safeLatLng(LatLng? point) {
+    if (point == null) return null;
+    if (point.latitude.isNaN || point.longitude.isNaN) return null;
+    if (point.latitude.isInfinite || point.longitude.isInfinite) return null;
+    if (point.latitude < -90 || point.latitude > 90) return null;
+    if (point.longitude < -180 || point.longitude > 180) return null;
+    return point;
+  }
+}
+
+class _MapUnavailablePlaceholder extends StatelessWidget {
+  const _MapUnavailablePlaceholder({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Color(0xFF374151),
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
