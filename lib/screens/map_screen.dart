@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -228,33 +228,55 @@ class _MapOutletOpenStatusBanner extends StatelessWidget {
           .snapshots(),
       builder: (context, snapshot) {
         final profile = snapshot.data?.data();
-        if (profile == null || BusinessHoursService.isOpenNow(profile)) {
-          return const SizedBox.shrink();
-        }
+        if (profile == null) return const SizedBox.shrink();
+        final isOpen = BusinessHoursService.isOpenNow(profile);
+        final scheduleText = BusinessHoursService.todayScheduleText(profile);
+        final color = isOpen ? const Color(0xFF0E7A4F) : const Color(0xFF9F1239);
+        final background = isOpen ? const Color(0xFFE8F8EF) : const Color(0xFFFFE4E6);
+        final border = isOpen ? const Color(0xFF86EFAC) : const Color(0xFFFB7185);
         return Container(
           width: double.infinity,
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: const Color(0xFFFFE4E6),
+            color: background,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFFB7185)),
+            border: Border.all(color: border),
           ),
-          child: const Text(
-            'المنفذ مغلق حالياً',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Color(0xFF9F1239),
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
+          child: Row(
+            children: [
+              Icon(Icons.schedule_rounded, color: color, size: 24),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isOpen ? 'المنفذ مفتوح حالياً' : 'المنفذ مغلق حالياً',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'دوام اليوم: $scheduleText',
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         );
       },
     );
   }
 }
-
 class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
   static const String _rashidOutletName = 'منفذ الراشد';
 
@@ -1608,3 +1630,4 @@ class _MapUnavailablePlaceholder extends StatelessWidget {
     );
   }
 }
+

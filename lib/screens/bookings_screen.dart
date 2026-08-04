@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -456,10 +456,9 @@ class _BookingsScreenState extends State<BookingsScreen> {
                                 child: Text(
                                     'المنفذ المقبول: ${(data['outletName'] ?? '').toString()}'),
                               ),
-                            if (role == 'client' &&
-                                (status == 'accepted' ||
+                            if (status == 'accepted' ||
                                     status == 'in_progress' ||
-                                    status == 'awaiting_provider_code'))
+                                    status == 'awaiting_provider_code')
                               _OutletOpenStatusBanner(
                                 outletId: (data['outletId'] ?? '').toString(),
                               ),
@@ -1283,6 +1282,22 @@ class _BookingsScreenState extends State<BookingsScreen> {
       String bookingDocId, String outletId, String price) async {
     debugPrint(
         '[ProposalFlow] accepting proposal bookingId=$bookingDocId outletId=$outletId');
+    final clientId = (widget.profile['uid'] ?? '').toString();
+    final hasActiveBooking = await _clientHasActiveAcceptedBooking(
+      clientId,
+      exceptBookingDocId: bookingDocId,
+    );
+    if (hasActiveBooking) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'لديك طلب مقبول حالياً. لا يمكنك قبول طلب آخر قبل إكمال الطلب الحالي.',
+          ),
+        ),
+      );
+      return;
+    }
     final p = double.tryParse(price) ?? 0;
     final bookingRef =
         FirebaseFirestore.instance.collection('bookings').doc(bookingDocId);
@@ -1362,7 +1377,6 @@ class _BookingsScreenState extends State<BookingsScreen> {
       );
       return;
     }
-    final clientId = (widget.profile['uid'] ?? '').toString();
     try {
       await FirebaseFirestore.instance.collection('bookingEvents').add({
         'type': 'booking_accepted',
@@ -1403,6 +1417,23 @@ class _BookingsScreenState extends State<BookingsScreen> {
         body: 'أصبح الطلب نشطًا ويمكن متابعته',
       );
     }
+  }
+
+  Future<bool> _clientHasActiveAcceptedBooking(
+    String clientId, {
+    String? exceptBookingDocId,
+  }) async {
+    if (clientId.isEmpty) return false;
+    final snap = await FirebaseFirestore.instance
+        .collection('bookings')
+        .where('clientId', isEqualTo: clientId)
+        .where(
+          'status',
+          whereIn: ['accepted', 'in_progress', 'awaiting_provider_code'],
+        )
+        .limit(10)
+        .get();
+    return snap.docs.any((doc) => doc.id != exceptBookingDocId);
   }
 
   double? _toDouble(dynamic value) {
@@ -2153,32 +2184,55 @@ class _OutletOpenStatusBanner extends StatelessWidget {
           .snapshots(),
       builder: (context, snapshot) {
         final profile = snapshot.data?.data();
-        if (profile == null || BusinessHoursService.isOpenNow(profile)) {
-          return const SizedBox.shrink();
-        }
+        if (profile == null) return const SizedBox.shrink();
+        final isOpen = BusinessHoursService.isOpenNow(profile);
+        final scheduleText = BusinessHoursService.todayScheduleText(profile);
+        final color = isOpen ? const Color(0xFF0E7A4F) : const Color(0xFF9F1239);
+        final background = isOpen ? const Color(0xFFE8F8EF) : const Color(0xFFFFE4E6);
+        final border = isOpen ? const Color(0xFF86EFAC) : const Color(0xFFFB7185);
         return Container(
           width: double.infinity,
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFFFFE4E6),
+            color: background,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFFB7185)),
+            border: Border.all(color: border),
           ),
-          child: const Text(
-            'المنفذ مغلق حالياً',
-            style: TextStyle(
-              color: Color(0xFF9F1239),
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-            ),
+          child: Row(
+            children: [
+              Icon(Icons.schedule_rounded, color: color),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isOpen ? 'المنفذ مفتوح حالياً' : 'المنفذ مغلق حالياً',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'دوام اليوم: $scheduleText',
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         );
       },
     );
   }
 }
-
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge({required this.status});
 
@@ -2231,3 +2285,4 @@ class _StatusBadge extends StatelessWidget {
     }
   }
 }
+

@@ -49,3 +49,14 @@
 2026-08-03 23:52:35.314: [INFO] OnPrimaryAccountChanged PrimaryAccountChangeEvent::Type::kSet
 2026-08-03 23:52:39.360: [INFO] Sync initialization duration: 6629ms
 2026-08-03 23:55:54.264: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-04 22:02:50.604: [INFO] CurrentProfilePath: D:\Temp\flutter_tools.9af723c2\flutter_tools_chrome_device.57639c18\Default
+2026-08-04 22:02:50.604: [INFO] Profiles total count: 1
+2026-08-04 22:02:50.604: [INFO] Profile: name=ملف التعريف 1 path=D:\Temp\flutter_tools.9af723c2\flutter_tools_chrome_device.57639c18\Default lastActive=null
+2026-08-04 22:02:50.604: [INFO] LastUsedProfileDir: D:\Temp\flutter_tools.9af723c2\flutter_tools_chrome_device.57639c18\Default
+2026-08-04 22:02:50.604: [INFO] VisibilityChanged: 0
+2026-08-04 22:02:50.643: [INFO] OnDoneLoading sync enabled: 1
+2026-08-04 22:02:50.643: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-04 22:02:50.643: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-04 22:02:50.643: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-04 22:02:59.499: [INFO] Sync initialization duration: 1825ms
+2026-08-04 22:08:22.372: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1

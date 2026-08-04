@@ -60,6 +60,28 @@ class BusinessHoursService {
     return 'المنفذ مغلق حالياً';
   }
 
+  static String todayScheduleText(Map<String, dynamic> profile,
+      {DateTime? now}) {
+    final raw = profile['businessHours'];
+    if (raw is! Map) return 'وقت العمل غير محدد';
+    final current = now ?? DateTime.now();
+    final key = _keyForDate(current);
+    final day = raw[key];
+    if (day is! Map || day['closed'] == true) return 'مغلق اليوم';
+    final periods = day['periods'];
+    if (periods is! List) return 'وقت العمل غير محدد';
+    final parts = <String>[];
+    for (final period in periods) {
+      if (!_validPeriod(period)) continue;
+      final open = _formatTime((period as Map)['open']);
+      final close = _formatTime(period['close']);
+      if (open == null || close == null) continue;
+      parts.add('$open - $close');
+    }
+    if (parts.isEmpty) return 'وقت العمل غير محدد';
+    return parts.join('  |  ');
+  }
+
   static String _keyForDate(DateTime date) {
     switch (date.weekday) {
       case DateTime.saturday:
@@ -96,5 +118,15 @@ class BusinessHoursService {
     if (hour == null || minute == null) return null;
     if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
     return hour * 60 + minute;
+  }
+
+  static String? _formatTime(Object? raw) {
+    final minutes = _minutes(raw);
+    if (minutes == null) return null;
+    final hour24 = minutes ~/ 60;
+    final minute = minutes % 60;
+    final period = hour24 < 12 ? 'ص' : 'م';
+    final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
+    return '$hour12:${minute.toString().padLeft(2, '0')} $period';
   }
 }

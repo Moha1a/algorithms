@@ -245,6 +245,18 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
 
   Future<void> _acceptOffer(String offerId, Map<String, dynamic> offer) async {
     if (_uid.isEmpty) return;
+    final hasActiveBooking = await _clientHasActiveAcceptedBooking(_uid);
+    if (hasActiveBooking) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'لديك طلب مقبول حالياً. لا يمكنك قبول طلب آخر قبل إكمال الطلب الحالي.',
+          ),
+        ),
+      );
+      return;
+    }
     final outletOpen = await _isOutletOpenForOffer(offer);
     if (!outletOpen) {
       if (!mounted) return;
@@ -393,6 +405,19 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
     }
   }
 
+  Future<bool> _clientHasActiveAcceptedBooking(String clientId) async {
+    final snap = await FirebaseFirestore.instance
+        .collection('bookings')
+        .where('clientId', isEqualTo: clientId)
+        .where(
+          'status',
+          whereIn: ['accepted', 'in_progress', 'awaiting_provider_code'],
+        )
+        .limit(1)
+        .get();
+    return snap.docs.isNotEmpty;
+  }
+
   Future<_AcceptOfferResult?> _openAcceptOfferSheet(
     Map<String, dynamic> offer,
   ) async {
@@ -532,7 +557,9 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
     }).length;
   }
 
-  Future<bool> _isOutletOpenForOffer(Map<String, dynamic> offer) async {
+  Future<Map<String, dynamic>> _outletProfileForOffer(
+    Map<String, dynamic> offer,
+  ) async {
     final outletId = (offer['outletId'] ?? '').toString();
     Map<String, dynamic> profile = Map<String, dynamic>.from(offer);
     if (outletId.isNotEmpty) {
@@ -543,6 +570,11 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
           .timeout(const Duration(seconds: 6));
       profile = {...profile, ...?snap.data()};
     }
+    return profile;
+  }
+
+  Future<bool> _isOutletOpenForOffer(Map<String, dynamic> offer) async {
+    final profile = await _outletProfileForOffer(offer);
     return BusinessHoursService.isOpenNow(profile);
   }
 
@@ -616,15 +648,21 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
                           outletId != _uid);
                   return FutureBuilder<int>(
                     future: _activeSeatCount(doc.id),
-                    builder: (context, seatSnap) => FutureBuilder<bool>(
-                      future: _isOutletOpenForOffer(data),
-                      builder: (context, openSnap) {
-                        if (openSnap.hasData && openSnap.data == false) {
+                    builder: (context, seatSnap) =>
+                        FutureBuilder<Map<String, dynamic>>(
+                      future: _outletProfileForOffer(data),
+                      builder: (context, outletSnap) {
+                        final displayData = {
+                          ...data,
+                          ...?outletSnap.data,
+                        };
+                        if (outletSnap.hasData &&
+                            !BusinessHoursService.isOpenNow(displayData)) {
                           return const SizedBox.shrink();
                         }
                         return _OutletOfferCard(
                           offerId: doc.id,
-                          data: data,
+                          data: displayData,
                           activeSeatCount: seatSnap.data,
                           distanceText: DistanceUtils.text(km),
                           distanceLevel: DistanceUtils.level(km),
@@ -738,6 +776,8 @@ class _OutletOfferCard extends StatelessWidget {
         : 0;
     final activeAccepted = activeSeatCount ?? storedActiveAccepted;
     final remaining = max(0, maxClients - activeAccepted);
+    final scheduleText = BusinessHoursService.todayScheduleText(data);
+    final isOpen = BusinessHoursService.isOpenNow(data);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -842,6 +882,8 @@ class _OutletOfferCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
+          _TodayHoursPill(scheduleText: scheduleText, isOpen: isOpen),
+          const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -913,6 +955,41 @@ class _OutletOfferCard extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TodayHoursPill extends StatelessWidget {
+  const _TodayHoursPill({required this.scheduleText, required this.isOpen});
+
+  final String scheduleText;
+  final bool isOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isOpen ? const Color(0xFF0E7A4F) : const Color(0xFFC2410C);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.schedule_rounded, size: 20, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'دوام اليوم: $scheduleText',
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
         ],
       ),
     );
