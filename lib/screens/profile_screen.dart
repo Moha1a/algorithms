@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import 'outlet_hours_setup_screen.dart';
 import 'role_selection_screen.dart';
 import 'support_chat_screen.dart';
 
@@ -116,6 +117,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
             icon: const Icon(Icons.edit_rounded),
             label: Text(_saving ? 'جاري الحفظ...' : 'تعديل الملف الشخصي'),
           ),
+          if (role == 'outlet') ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => OutletHoursSetupScreen(
+                      profile: Map<String, dynamic>.from(widget.profile),
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.schedule_rounded),
+              label: const Text('تعديل أوقات العمل'),
+            ),
+          ],
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () {

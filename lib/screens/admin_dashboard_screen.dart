@@ -159,7 +159,8 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                 final u = d.data();
                 final n = (u['fullName'] ?? '').toString().toLowerCase();
                 final e = (u['email'] ?? '').toString().toLowerCase();
-                return n.contains(_q) || e.contains(_q);
+                final p = (u['phoneNumber'] ?? '').toString().toLowerCase();
+                return n.contains(_q) || e.contains(_q) || p.contains(_q);
               }).toList();
               return ListView.builder(
                 padding: const EdgeInsets.all(12),
@@ -181,6 +182,8 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                       title: Text((u['fullName'] ?? uid).toString()),
                       subtitle: Text(
                         '${(u['email'] ?? '').toString()}\n'
+                        'الهاتف: ${(u['phoneNumber'] ?? '').toString()}\n'
+                        'معرف الحساب: $uid\n'
                         'التقييم: ${(u['ratingAverage'] ?? 0).toString()}'
                         '${statusLabel.isEmpty ? '' : '\nالحالة: $statusLabel'}',
                       ),
@@ -500,6 +503,25 @@ class _TripsAdminTab extends StatefulWidget {
   State<_TripsAdminTab> createState() => _TripsAdminTabState();
 }
 
+class _AdminUserPhoneLine extends StatelessWidget {
+  const _AdminUserPhoneLine({required this.label, required this.uid});
+
+  final String label;
+  final String uid;
+
+  @override
+  Widget build(BuildContext context) {
+    if (uid.isEmpty) return Text('$label: غير محدد');
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
+      builder: (context, snapshot) {
+        final phone = (snapshot.data?.data()?['phoneNumber'] ?? '').toString();
+        return Text('$label: ${phone.isEmpty ? 'غير متوفر' : phone}');
+      },
+    );
+  }
+}
+
 class _TripsAdminTabState extends State<_TripsAdminTab> {
   String _q = '';
 
@@ -546,11 +568,25 @@ class _TripsAdminTabState extends State<_TripsAdminTab> {
                 itemBuilder: (_, i) {
                   final d = docs[i].data();
                   final id = docs[i].id;
+                  final clientId = (d['clientId'] ?? '').toString();
+                  final outletId = (d['outletId'] ?? '').toString();
                   return Card(
                     child: ListTile(
                       title: Text('طلب ${(d['bookingId'] ?? id).toString()}'),
-                      subtitle: Text(
-                          'الحالة: ${(d['status'] ?? '').toString()} • النوع: ${(d['type'] ?? '').toString()}'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                              'الحالة: ${(d['status'] ?? '').toString()} • النوع: ${(d['type'] ?? '').toString()}'),
+                          Text('حساب العميل: $clientId'),
+                          _AdminUserPhoneLine(
+                              label: 'رقم العميل', uid: clientId),
+                          Text('حساب المنفذ: $outletId'),
+                          _AdminUserPhoneLine(
+                              label: 'رقم المنفذ', uid: outletId),
+                        ],
+                      ),
                       trailing: PopupMenuButton<String>(
                         onSelected: (v) async {
                           if (v == 'cancel') {

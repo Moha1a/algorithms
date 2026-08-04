@@ -9,6 +9,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/business_hours_service.dart';
 import '../services/input_digit_utils.dart';
 import '../services/money_utils.dart';
 import 'home_shell_screen.dart';
@@ -212,6 +213,48 @@ class BookingMapDetailsScreen extends StatefulWidget {
       _BookingMapDetailsScreenState();
 }
 
+class _MapOutletOpenStatusBanner extends StatelessWidget {
+  const _MapOutletOpenStatusBanner({required this.outletId});
+
+  final String outletId;
+
+  @override
+  Widget build(BuildContext context) {
+    if (outletId.isEmpty) return const SizedBox.shrink();
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(outletId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final profile = snapshot.data?.data();
+        if (profile == null || BusinessHoursService.isOpenNow(profile)) {
+          return const SizedBox.shrink();
+        }
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFE4E6),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFFB7185)),
+          ),
+          child: const Text(
+            'المنفذ مغلق حالياً',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF9F1239),
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
   static const String _rashidOutletName = 'منفذ الراشد';
 
@@ -376,6 +419,10 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
                 ),
               ),
             ),
+            if (widget.role == 'client')
+              _MapOutletOpenStatusBanner(
+                outletId: (booking['outletId'] ?? '').toString(),
+              ),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(14),

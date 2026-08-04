@@ -1281,12 +1281,6 @@ class AuthService {
       if (normalizedRole == 'outlet') {
         final approvalStatus =
             (existingCurrent['approvalStatus'] ?? '').toString();
-        if (approvalStatus == 'pending') {
-          throw FirebaseAuthException(
-            code: 'outlet-pending-approval',
-            message: 'حساب المنفذ بانتظار موافقة الإدارة.',
-          );
-        }
         if (approvalStatus == 'rejected') {
           throw FirebaseAuthException(
               code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
@@ -1337,27 +1331,12 @@ class AuthService {
         payload['outletName'] = (outletName ?? '').trim();
         payload['region'] = (outletRegion ?? '').trim();
         payload['outletRegion'] = (outletRegion ?? '').trim();
-        payload['approvalStatus'] = 'pending';
-        payload['approvalRequestedAt'] = FieldValue.serverTimestamp();
-        payload['approvalDecisionAt'] = null;
-        payload['approvedBy'] = '';
+        payload['approvalStatus'] = 'approved';
+        payload['approvalDecisionAt'] = FieldValue.serverTimestamp();
+        payload['approvedBy'] = 'auto_registration';
       }
 
       await userDocRef.set(payload, SetOptions(merge: true));
-
-      if (normalizedRole == 'outlet') {
-        await _firestore.collection('notifications').add({
-          'toUserId': 'admin',
-          'type': 'outlet_approval_request',
-          'title': 'طلب منفذ جديد',
-          'body':
-              'تم تقديم طلب جديد من منفذ: ${fullName.trim().isEmpty ? normalizedPhone : fullName.trim()}',
-          'requestUid': uid,
-          'requestPhone': normalizedPhone,
-          'isRead': false,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-      }
     }
 
     await _safeRegisterDevice();
@@ -1396,11 +1375,6 @@ class AuthService {
     }
     if (role == 'outlet') {
       final approvalStatus = (profile['approvalStatus'] ?? '').toString();
-      if (approvalStatus == 'pending') {
-        throw FirebaseAuthException(
-            code: 'outlet-pending-approval',
-            message: 'حساب المنفذ بانتظار موافقة الإدارة.');
-      }
       if (approvalStatus == 'rejected') {
         throw FirebaseAuthException(
             code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
@@ -1502,12 +1476,6 @@ class AuthService {
         }
         if (role == 'outlet') {
           final approvalStatus = (profile['approvalStatus'] ?? '').toString();
-          if (approvalStatus == 'pending') {
-            throw FirebaseAuthException(
-              code: 'outlet-pending-approval',
-              message: 'حساب المنفذ بانتظار موافقة الإدارة.',
-            );
-          }
           if (approvalStatus == 'rejected') {
             throw FirebaseAuthException(
                 code: 'outlet-rejected', message: 'تم رفض طلب حساب المنفذ.');
@@ -1575,27 +1543,12 @@ class AuthService {
         payload['outletName'] = (outletName ?? '').trim();
         payload['region'] = (outletRegion ?? '').trim();
         payload['outletRegion'] = (outletRegion ?? '').trim();
-        payload['approvalStatus'] = 'pending';
-        payload['approvalRequestedAt'] = FieldValue.serverTimestamp();
-        payload['approvalDecisionAt'] = null;
-        payload['approvedBy'] = '';
+        payload['approvalStatus'] = 'approved';
+        payload['approvalDecisionAt'] = FieldValue.serverTimestamp();
+        payload['approvedBy'] = 'auto_registration';
       }
 
       await userDocRef.set(payload, SetOptions(merge: true));
-
-      if (role == 'outlet') {
-        await _firestore.collection('notifications').add({
-          'toUserId': 'admin',
-          'type': 'outlet_approval_request',
-          'title': 'طلب منفذ جديد',
-          'body':
-              'تم تقديم طلب جديد من منفذ: ${fullName.trim().isEmpty ? normalizedPhone : fullName.trim()}',
-          'requestUid': uid,
-          'requestPhone': normalizedPhone,
-          'isRead': false,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-      }
 
       await _safeRegisterDevice();
       final fresh = await userDocRef.get().timeout(const Duration(seconds: 8));
@@ -2462,7 +2415,7 @@ class AuthService {
       profile['outletName'] = (outletName ?? '').trim();
       profile['region'] = (outletRegion ?? '').trim();
       profile['outletRegion'] = (outletRegion ?? '').trim();
-      profile['approvalStatus'] = 'pending';
+      profile['approvalStatus'] = 'approved';
     }
 
     final canWriteProtectedData = _auth.currentUser != null;

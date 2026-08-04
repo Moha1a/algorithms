@@ -4,10 +4,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/business_hours_service.dart';
 import '../services/input_digit_utils.dart';
 import '../theme/app_colors.dart';
 import 'home_shell_screen.dart';
-import 'outlet_approval_pending_screen.dart';
+import 'outlet_hours_setup_screen.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   const OtpVerificationScreen({
@@ -169,23 +170,16 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   Future<void> _openProfile(Map<String, dynamic> profile) async {
     if (!mounted) return;
-    final isOutletRegistrationPending = widget.isRegistration &&
-        widget.role == 'outlet' &&
-        (profile['approvalStatus'] ?? '').toString() == 'pending';
-    if (isOutletRegistrationPending) {
-      await FirebaseAuth.instance.signOut();
-      if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) =>
-              OutletApprovalPendingScreen(phoneNumber: widget.phoneNumber),
-        ),
-        (_) => false,
-      );
-      return;
-    }
-
     try {
+      final isOutlet = (profile['role'] ?? widget.role).toString() == 'outlet';
+      if (isOutlet && !BusinessHoursService.hasConfiguredHours(profile)) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+              builder: (_) => OutletHoursSetupScreen(profile: profile)),
+          (_) => false,
+        );
+        return;
+      }
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => HomeShellScreen(profile: profile)),
         (_) => false,

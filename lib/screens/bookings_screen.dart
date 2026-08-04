@@ -3,6 +3,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../services/business_hours_service.dart';
 import '../services/input_digit_utils.dart';
 import '../services/distance_utils.dart';
 import '../services/location_guard_service.dart';
@@ -454,6 +455,13 @@ class _BookingsScreenState extends State<BookingsScreen> {
                                 padding: const EdgeInsets.only(bottom: 8),
                                 child: Text(
                                     'المنفذ المقبول: ${(data['outletName'] ?? '').toString()}'),
+                              ),
+                            if (role == 'client' &&
+                                (status == 'accepted' ||
+                                    status == 'in_progress' ||
+                                    status == 'awaiting_provider_code'))
+                              _OutletOpenStatusBanner(
+                                outletId: (data['outletId'] ?? '').toString(),
                               ),
                             if (role == 'outlet' &&
                                 (status == 'accepted' ||
@@ -1028,20 +1036,24 @@ class _BookingsScreenState extends State<BookingsScreen> {
       }
     }
 
-    FirebaseCrashlytics.instance.log('price_proposal_location_required');
-    FirebaseCrashlytics.instance
-        .setCustomKey('price_proposal_location_required', true);
-    final outletPosition =
-        await LocationGuardService.instance.requireCurrentLocation(
-      context,
-      title: 'مشاركة الموقع مطلوبة لعرض السعر',
-      message:
-          'نحتاج موقع المنفذ الحالي حتى يظهر للعميل ويتم حساب المسافة بينكما قبل قبول الطلب.',
-      crashlyticsKey: 'price_proposal_location_required',
-    );
-    if (outletPosition == null) return;
-    final outletLat = outletPosition.latitude;
-    final outletLng = outletPosition.longitude;
+    var outletLat = _toDouble(widget.profile['fixedLat']);
+    var outletLng = _toDouble(widget.profile['fixedLng']);
+    if (outletLat == null || outletLng == null) {
+      FirebaseCrashlytics.instance.log('price_proposal_location_required');
+      FirebaseCrashlytics.instance
+          .setCustomKey('price_proposal_location_required', true);
+      final outletPosition =
+          await LocationGuardService.instance.requireCurrentLocation(
+        context,
+        title: 'مشاركة الموقع مطلوبة لعرض السعر',
+        message:
+            'نحتاج موقع المنفذ الحالي حتى يظهر للعميل ويتم حساب المسافة بينكما قبل قبول الطلب.',
+        crashlyticsKey: 'price_proposal_location_required',
+      );
+      if (outletPosition == null) return;
+      outletLat = outletPosition.latitude;
+      outletLng = outletPosition.longitude;
+    }
     final clientLatForDistance =
         _toDouble(bookingDataForValidation['clientLat']);
     final clientLngForDistance =
@@ -1163,23 +1175,27 @@ class _BookingsScreenState extends State<BookingsScreen> {
       return;
     }
 
-    FirebaseCrashlytics.instance.log('rashid_direct_accept_location_required');
-    FirebaseCrashlytics.instance.setCustomKey('rashid_direct_accept', true);
-    final outletPosition =
-        await LocationGuardService.instance.requireCurrentLocation(
-      context,
-      title: 'مشاركة الموقع مطلوبة لقبول الطلب',
-      message: 'يجب مشاركة موقع المنفذ الحالي قبل قبول الطلب مباشرة.',
-      crashlyticsKey: 'rashid_direct_accept_location_required',
-    );
-    if (outletPosition == null) return;
-
     final db = FirebaseFirestore.instance;
     final bookingRef = db.collection('bookings').doc(bookingDocId);
     final outletSnap = await db.collection('users').doc(uid).get();
     final outletName = _outletDisplayName(outletSnap.data());
-    final outletLat = outletPosition.latitude;
-    final outletLng = outletPosition.longitude;
+    var outletLat = _toDouble(outletSnap.data()?['fixedLat']);
+    var outletLng = _toDouble(outletSnap.data()?['fixedLng']);
+    if (outletLat == null || outletLng == null) {
+      FirebaseCrashlytics.instance
+          .log('rashid_direct_accept_location_required');
+      FirebaseCrashlytics.instance.setCustomKey('rashid_direct_accept', true);
+      final outletPosition =
+          await LocationGuardService.instance.requireCurrentLocation(
+        context,
+        title: 'مشاركة الموقع مطلوبة لقبول الطلب',
+        message: 'يجب مشاركة موقع المنفذ الحالي قبل قبول الطلب مباشرة.',
+        crashlyticsKey: 'rashid_direct_accept_location_required',
+      );
+      if (outletPosition == null) return;
+      outletLat = outletPosition.latitude;
+      outletLng = outletPosition.longitude;
+    }
 
     String ownerId = '';
     double acceptedCommission = 0;
@@ -1291,6 +1307,8 @@ class _BookingsScreenState extends State<BookingsScreen> {
         .toString();
     double? outletLat = _toDouble(acceptedProposal?['outletLat']);
     double? outletLng = _toDouble(acceptedProposal?['outletLng']);
+    outletLat ??= _toDouble(outletSnap.data()?['fixedLat']);
+    outletLng ??= _toDouble(outletSnap.data()?['fixedLng']);
     if (outletLat == null || outletLng == null) {
       FirebaseCrashlytics.instance.log('accept_location_required');
       FirebaseCrashlytics.instance
@@ -2116,6 +2134,47 @@ class _FilterChip extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _OutletOpenStatusBanner extends StatelessWidget {
+  const _OutletOpenStatusBanner({required this.outletId});
+
+  final String outletId;
+
+  @override
+  Widget build(BuildContext context) {
+    if (outletId.isEmpty) return const SizedBox.shrink();
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(outletId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final profile = snapshot.data?.data();
+        if (profile == null || BusinessHoursService.isOpenNow(profile)) {
+          return const SizedBox.shrink();
+        }
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFE4E6),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFFB7185)),
+          ),
+          child: const Text(
+            'المنفذ مغلق حالياً',
+            style: TextStyle(
+              color: Color(0xFF9F1239),
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        );
+      },
     );
   }
 }

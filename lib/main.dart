@@ -15,8 +15,10 @@ import 'screens/admin_dashboard_screen.dart';
 import 'screens/app_version_gate.dart';
 import 'screens/app_review_access_screen.dart';
 import 'screens/home_shell_screen.dart';
+import 'screens/outlet_hours_setup_screen.dart';
 import 'screens/role_selection_screen.dart';
 import 'services/auth_service.dart';
+import 'services/business_hours_service.dart';
 import 'services/push_notifications_service.dart';
 import 'theme/app_theme.dart';
 
@@ -242,6 +244,10 @@ class _FirebaseBootstrapperState extends State<_FirebaseBootstrapper> {
       }
       if ((profile['role'] ?? '').toString() == 'admin') {
         return const AdminDashboardScreen();
+      }
+      if ((profile['role'] ?? '').toString() == 'outlet' &&
+          !BusinessHoursService.hasConfiguredHours(profile)) {
+        return OutletHoursSetupScreen(profile: profile);
       }
       return HomeShellScreen(profile: profile);
     } catch (error, stackTrace) {

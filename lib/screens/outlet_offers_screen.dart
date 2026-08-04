@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../services/business_hours_service.dart';
 import '../services/distance_utils.dart';
 import '../services/location_guard_service.dart';
 import '../services/money_utils.dart';
@@ -223,6 +224,7 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
               .toString()
               .trim(),
       'outletGovernorate': (currentProfile['governorate'] ?? '').toString(),
+      'businessHours': currentProfile['businessHours'],
       'outletLat': outletLat,
       'outletLng': outletLng,
       'type': offerType,
@@ -243,6 +245,15 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
 
   Future<void> _acceptOffer(String offerId, Map<String, dynamic> offer) async {
     if (_uid.isEmpty) return;
+    final outletOpen = await _isOutletOpenForOffer(offer);
+    if (!outletOpen) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('المنفذ مغلق حالياً، لا يمكن قبول العرض.')),
+      );
+      return;
+    }
     final result = await _openAcceptOfferSheet(offer);
     if (result == null) return;
 
@@ -521,6 +532,20 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
     }).length;
   }
 
+  Future<bool> _isOutletOpenForOffer(Map<String, dynamic> offer) async {
+    final outletId = (offer['outletId'] ?? '').toString();
+    Map<String, dynamic> profile = Map<String, dynamic>.from(offer);
+    if (outletId.isNotEmpty) {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(outletId)
+          .get()
+          .timeout(const Duration(seconds: 6));
+      profile = {...profile, ...?snap.data()};
+    }
+    return BusinessHoursService.isOpenNow(profile);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_uid.isEmpty) {
@@ -591,17 +616,26 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
                           outletId != _uid);
                   return FutureBuilder<int>(
                     future: _activeSeatCount(doc.id),
-                    builder: (context, seatSnap) => _OutletOfferCard(
-                      offerId: doc.id,
-                      data: data,
-                      activeSeatCount: seatSnap.data,
-                      distanceText: DistanceUtils.text(km),
-                      distanceLevel: DistanceUtils.level(km),
-                      needsLocation: km == null,
-                      savingLocation: _savingLocation,
-                      onShareLocation: _shareLocation,
-                      onAccept:
-                          canAccept ? () => _acceptOffer(doc.id, data) : null,
+                    builder: (context, seatSnap) => FutureBuilder<bool>(
+                      future: _isOutletOpenForOffer(data),
+                      builder: (context, openSnap) {
+                        if (openSnap.hasData && openSnap.data == false) {
+                          return const SizedBox.shrink();
+                        }
+                        return _OutletOfferCard(
+                          offerId: doc.id,
+                          data: data,
+                          activeSeatCount: seatSnap.data,
+                          distanceText: DistanceUtils.text(km),
+                          distanceLevel: DistanceUtils.level(km),
+                          needsLocation: km == null,
+                          savingLocation: _savingLocation,
+                          onShareLocation: _shareLocation,
+                          onAccept: canAccept
+                              ? () => _acceptOffer(doc.id, data)
+                              : null,
+                        );
+                      },
                     ),
                   );
                 },
