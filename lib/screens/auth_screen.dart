@@ -12,9 +12,7 @@ import '../services/iraqi_phone_utils.dart';
 import '../theme/app_colors.dart';
 import 'admin_dashboard_screen.dart';
 import 'app_review_access_screen.dart';
-import 'home_shell_screen.dart';
 import 'otp_verification_screen.dart';
-import 'outlet_approval_pending_screen.dart';
 import 'role_selection_screen.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -36,6 +34,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final _passwordController = TextEditingController();
   final _fullNameController = TextEditingController();
   final _outletNameController = TextEditingController();
+  final _outletRegionController = TextEditingController();
 
   final AuthService _authService = AuthService();
   bool _isLogin = false;
@@ -43,7 +42,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isNavigating = false;
   bool _acceptedTerms = false;
   bool _passwordVisible = false;
-  bool _hasDebugAuthReport = false;
+  final bool _hasDebugAuthReport = false;
   DateTime? _phoneAuthSubmitCooldownUntil;
   Timer? _phoneAuthSubmitCooldownTimer;
   final String _selectedGovernorate = 'البصرة';
@@ -54,6 +53,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _passwordController.dispose();
     _fullNameController.dispose();
     _outletNameController.dispose();
+    _outletRegionController.dispose();
     _phoneAuthSubmitCooldownTimer?.cancel();
     super.dispose();
   }
@@ -174,6 +174,21 @@ class _AuthScreenState extends State<AuthScreen> {
                         const SizedBox(height: 12),
                       ],
                       if (needOutletName) ...[
+                        TextFormField(
+                          controller: _outletRegionController,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: 'المنطقة',
+                            prefixIcon: Icon(Icons.location_city_rounded),
+                          ),
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) {
+                              return 'يرجى إدخال المنطقة';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
                         TextFormField(
                           controller: _outletNameController,
                           textInputAction: TextInputAction.next,
@@ -368,29 +383,18 @@ class _AuthScreenState extends State<AuthScreen> {
     return until != null && DateTime.now().isBefore(until);
   }
 
-  void _startPhoneAuthSubmitCooldown() {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
-
-    _phoneAuthSubmitCooldownTimer?.cancel();
-    _phoneAuthSubmitCooldownUntil = DateTime.now().add(
-      const Duration(seconds: 60),
-    );
-    if (mounted) setState(() {});
-
-    _phoneAuthSubmitCooldownTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (timer) {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
-        if (!_isPhoneAuthSubmitCoolingDown) {
-          timer.cancel();
-          _phoneAuthSubmitCooldownUntil = null;
-        }
-        setState(() {});
-      },
-    );
+  List<String> _missingRequiredFields(String selectedRole) {
+    final fields = <String>[];
+    if (!_isLogin && _fullNameController.text.trim().isEmpty) {
+      fields.add('الاسم الكامل');
+    }
+    if (!_isLogin && selectedRole == 'outlet') {
+      if (_outletNameController.text.trim().isEmpty) fields.add('اسم المنفذ');
+      if (_outletRegionController.text.trim().isEmpty) fields.add('المنطقة');
+    }
+    if (_phoneController.text.trim().isEmpty) fields.add('رقم الهاتف');
+    if (_passwordController.text.trim().isEmpty) fields.add('كلمة المرور');
+    return fields;
   }
 
   Future<void> _submit(String selectedRole) async {
@@ -414,6 +418,10 @@ class _AuthScreenState extends State<AuthScreen> {
     }
 
     final formState = _formKey.currentState;
+    final missingFields = _missingRequiredFields(selectedRole);
+    if (missingFields.isNotEmpty) {
+      _showMessage('يرجى إكمال الحقول التالية: ${missingFields.join('، ')}');
+    }
     if (formState == null || !formState.validate()) return;
     if (!_isLogin && !_acceptedTerms) {
       _showMessage('يرجى الموافقة على الشروط والأحكام لإكمال التسجيل.');
@@ -438,8 +446,6 @@ class _AuthScreenState extends State<AuthScreen> {
       return;
     }
     if (mounted) setState(() => _isLoading = true);
-    var flowHandled = false;
-    var phoneAuthRequestStarted = false;
 
     try {
       if (_isLogin) {
@@ -450,184 +456,53 @@ class _AuthScreenState extends State<AuthScreen> {
         );
       }
       debugPrint('otp_start_after_password_success role=$selectedRole');
-      if (kIsWeb) {
-        final webSession = await _authService.sendWebPhoneVerificationCode(
-          phoneNumber: normalizedPhone,
-        );
-        if (!mounted) return;
-        setState(() => _isLoading = false);
-        debugPrint('[LOGIN FLOW] web code sent; navigation start');
-        _safeNavigate(() {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => OtpVerificationScreen(
-                authService: _authService,
-                phoneNumber: normalizedPhone,
-                initialVerificationId: webSession.verificationId,
-                initialResendToken: null,
-                webConfirmationResult: webSession.confirmationResult,
-                role: selectedRole,
-                isRegistration: !_isLogin,
-                fullName: _fullNameController.text,
-                governorate: _selectedGovernorate,
-                outletName: _outletNameController.text,
-                password: _passwordController.text,
-                acceptedTerms: _acceptedTerms,
-                termsVersion: _termsVersion,
-                acceptedTermsItems: _termsForRole(selectedRole),
-              ),
-            ),
-          );
-        });
-        return;
-      }
-      debugPrint(
-          '[LOGIN FLOW] final phone sent to FirebaseAuth.verifyPhoneNumber: $normalizedPhone');
-      _startPhoneAuthSubmitCooldown();
-      phoneAuthRequestStarted = true;
-      await _authService.verifyPhoneNumber(
+      final externalOtpId = await _authService.requestOtpCode(
         phoneNumber: normalizedPhone,
-        phoneInput: _phoneController.text,
-        verificationCompleted: (credential) async {
-          if (flowHandled) return;
-          flowHandled = true;
-          try {
-            final profile = await _authService.loginOrRegisterWithCredential(
-              credential: credential,
-              role: selectedRole,
+      );
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      debugPrint('[LOGIN FLOW] external OTP sent; navigation start');
+      _safeNavigate(() {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => OtpVerificationScreen(
+              authService: _authService,
               phoneNumber: normalizedPhone,
+              initialVerificationId: externalOtpId,
+              role: selectedRole,
               isRegistration: !_isLogin,
               fullName: _fullNameController.text,
               governorate: _selectedGovernorate,
               outletName: _outletNameController.text,
+              outletRegion: _outletRegionController.text,
               password: _passwordController.text,
               acceptedTerms: _acceptedTerms,
               termsVersion: _termsVersion,
               acceptedTermsItems: _termsForRole(selectedRole),
-            );
-            if (!mounted) return;
-            final isOutletRegistrationPending = !_isLogin &&
-                selectedRole == 'outlet' &&
-                (profile['approvalStatus'] ?? '').toString() == 'pending';
-            if (isOutletRegistrationPending) {
-              await FirebaseAuth.instance.signOut();
-              if (!mounted) return;
-              debugPrint('[LOGIN FLOW] navigation start');
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      OutletApprovalPendingScreen(phoneNumber: normalizedPhone),
-                ),
-                (_) => false,
-              );
-              return;
-            }
-            debugPrint('[LOGIN FLOW] navigation start');
-            _openPostAuthScreen(profile);
-          } on FirebaseAuthException catch (e) {
-            debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
-            flowHandled = false;
-            debugPrint('[LOGIN FLOW] error code: ${e.code}');
-            debugPrint('[LOGIN FLOW] controlled failure');
-            _showMessage(_authService.mapFirebaseAuthError(e));
-            _showDebugErrorDialog(e.toString());
-          } catch (e, stackTrace) {
-            flowHandled = false;
-            debugPrint('LOGIN_CATCH_ERROR: $e');
-            debugPrint('$stackTrace');
-            debugPrint('[LOGIN FLOW] controlled failure');
-            _showMessage('حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.');
-            _showDebugErrorDialog(e.toString());
-          } finally {
-            if (mounted) setState(() => _isLoading = false);
-          }
-        },
-        verificationFailed: (e) {
-          flowHandled = true;
-          debugPrint('PHONE_AUTH_VERIFY_FAILED');
-          debugPrint('[LOGIN FLOW verificationFailed] code=${e.code}');
-          debugPrint(
-              '[LOGIN FLOW verificationFailed] message=${e.message ?? ''}');
-          debugPrint('[LOGIN FLOW verificationFailed] toString=$e');
-          debugPrint(
-              '[LOGIN FLOW verificationFailed] stackTrace=${StackTrace.current}');
-          debugPrint('[LOGIN FLOW] error code: ${e.code}');
-          debugPrint('[LOGIN FLOW] controlled failure');
-          if (mounted) setState(() => _hasDebugAuthReport = true);
-          _showMessage(_phoneAuthRequestFailureMessage(e));
-          if (mounted) setState(() => _isLoading = false);
-        },
-        codeSent: (verificationId, resendToken) {
-          debugPrint('PHONE_AUTH_CODE_SENT');
-          debugPrint(
-              '[LOGIN FLOW codeSent] SMS code sent successfully verificationIdPresent=${verificationId.trim().isNotEmpty} resendTokenPresent=${resendToken != null}');
-          if (flowHandled) return;
-          flowHandled = true;
-          if (!mounted) return;
-          setState(() => _isLoading = false);
-          debugPrint('[LOGIN FLOW] navigation start');
-          _safeNavigate(() {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => OtpVerificationScreen(
-                  authService: _authService,
-                  phoneNumber: normalizedPhone,
-                  initialVerificationId: verificationId,
-                  initialResendToken: resendToken,
-                  role: selectedRole,
-                  isRegistration: !_isLogin,
-                  fullName: _fullNameController.text,
-                  governorate: _selectedGovernorate,
-                  outletName: _outletNameController.text,
-                  password: _passwordController.text,
-                  acceptedTerms: _acceptedTerms,
-                  termsVersion: _termsVersion,
-                  acceptedTermsItems: _termsForRole(selectedRole),
-                ),
-              ),
-            );
-          });
-        },
-        codeAutoRetrievalTimeout: (verificationId) {
-          debugPrint(
-              '[LOGIN FLOW timeout] codeAutoRetrievalTimeout fired verificationIdPresent=${verificationId.trim().isNotEmpty}');
-          if (mounted) setState(() => _isLoading = false);
-        },
-      );
+            ),
+          ),
+        );
+      });
+      return;
     } on FirebaseAuthException catch (e) {
       debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
       debugPrint('[LOGIN FLOW] error code: ${e.code}');
       debugPrint('[LOGIN FLOW] controlled failure');
-      if (phoneAuthRequestStarted) {
-        if (mounted) setState(() => _hasDebugAuthReport = true);
-        _showMessage(_phoneAuthRequestFailureMessage(e));
-      } else {
-        _showMessage(_authService.mapFirebaseAuthError(e));
-      }
+      _showMessage(_authService.mapFirebaseAuthError(e));
       _showDebugErrorDialog(e.toString());
       if (mounted) setState(() => _isLoading = false);
     } on FirebaseException catch (e) {
       debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
       debugPrint('[LOGIN FLOW] error code: ${e.code}');
       debugPrint('[LOGIN FLOW] controlled failure');
-      if (phoneAuthRequestStarted) {
-        if (mounted) setState(() => _hasDebugAuthReport = true);
-        _showMessage(_phoneAuthRequestFailureMessage(e));
-      } else {
-        _showMessage('حدث خطأ في الخدمة. حاول مرة أخرى.');
-      }
+      _showMessage('حدث خطأ في الخدمة. حاول مرة أخرى.');
       _showDebugErrorDialog(e.toString());
       if (mounted) setState(() => _isLoading = false);
     } on PlatformException catch (e) {
       debugPrint('PHONE_AUTH_EXCEPTION_CAUGHT');
       debugPrint('[LOGIN FLOW] error code: ${e.code}');
       debugPrint('[LOGIN FLOW] controlled failure');
-      if (phoneAuthRequestStarted) {
-        if (mounted) setState(() => _hasDebugAuthReport = true);
-        _showMessage(_phoneAuthRequestFailureMessage(e));
-      } else {
-        _showMessage('حدث خطأ بالنظام. حاول مرة أخرى.');
-      }
+      _showMessage('حدث خطأ بالنظام. حاول مرة أخرى.');
       _showDebugErrorDialog(e.toString());
       if (mounted) setState(() => _isLoading = false);
     } on FormatException catch (e) {
@@ -681,113 +556,29 @@ class _AuthScreenState extends State<AuthScreen> {
     }
     final normalized = IraqiPhoneUtils.normalize(controller.text);
     if (mounted) setState(() => _isLoading = true);
-    var flowHandled = false;
-    var phoneAuthRequestStarted = false;
     try {
-      if (kIsWeb) {
-        final webSession = await _authService.sendWebPhoneVerificationCode(
-          phoneNumber: normalized,
-        );
-        if (!mounted) return;
-        setState(() => _isLoading = false);
-        _safeNavigate(() {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => OtpVerificationScreen(
-                authService: _authService,
-                phoneNumber: normalized,
-                initialVerificationId: webSession.verificationId,
-                initialResendToken: null,
-                webConfirmationResult: webSession.confirmationResult,
-                isPasswordResetFlow: true,
-              ),
-            ),
-          );
-        });
-        return;
-      }
-      debugPrint(
-          '[FORGOT PASSWORD] final phone sent to FirebaseAuth.verifyPhoneNumber: $normalized');
-      _startPhoneAuthSubmitCooldown();
-      phoneAuthRequestStarted = true;
-      await _authService.verifyPhoneNumber(
+      final externalOtpId = await _authService.requestOtpCode(
         phoneNumber: normalized,
-        phoneInput: controller.text,
-        verificationCompleted: (_) {},
-        verificationFailed: (e) {
-          flowHandled = true;
-          debugPrint('PHONE_AUTH_VERIFY_FAILED');
-          debugPrint('[FORGOT PASSWORD verificationFailed] code=${e.code}');
-          debugPrint(
-              '[FORGOT PASSWORD verificationFailed] message=${e.message ?? ''}');
-          debugPrint('[FORGOT PASSWORD verificationFailed] toString=$e');
-          debugPrint(
-              '[FORGOT PASSWORD verificationFailed] stackTrace=${StackTrace.current}');
-          if (mounted) setState(() => _hasDebugAuthReport = true);
-          _showMessage(_phoneAuthRequestFailureMessage(e));
-          if (mounted) setState(() => _isLoading = false);
-        },
-        codeSent: (verificationId, resendToken) {
-          debugPrint('PHONE_AUTH_CODE_SENT');
-          debugPrint(
-              '[FORGOT PASSWORD codeSent] SMS code sent successfully verificationIdPresent=${verificationId.trim().isNotEmpty} resendTokenPresent=${resendToken != null}');
-          if (flowHandled) return;
-          flowHandled = true;
-          if (!mounted) return;
-          setState(() => _isLoading = false);
-          _safeNavigate(() {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => OtpVerificationScreen(
-                  authService: _authService,
-                  phoneNumber: normalized,
-                  initialVerificationId: verificationId,
-                  initialResendToken: resendToken,
-                  isPasswordResetFlow: true,
-                ),
-              ),
-            );
-          });
-        },
-        codeAutoRetrievalTimeout: (verificationId) {
-          debugPrint(
-              '[FORGOT PASSWORD timeout] codeAutoRetrievalTimeout fired verificationIdPresent=${verificationId.trim().isNotEmpty}');
-          if (mounted) setState(() => _isLoading = false);
-        },
       );
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _safeNavigate(() {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => OtpVerificationScreen(
+              authService: _authService,
+              phoneNumber: normalized,
+              initialVerificationId: externalOtpId,
+              isPasswordResetFlow: true,
+            ),
+          ),
+        );
+      });
+      return;
     } catch (e) {
-      if (phoneAuthRequestStarted) {
-        if (mounted) setState(() => _hasDebugAuthReport = true);
-        _showMessage(_phoneAuthRequestFailureMessage(e));
-      } else {
-        _showMessage(_authService.mapFirebaseAuthError(e));
-      }
+      _showMessage(_authService.mapFirebaseAuthError(e));
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  void _openPostAuthScreen(Map<String, dynamic> profile) {
-    _safeNavigate(() {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => HomeShellScreen(profile: profile),
-        ),
-      );
-    });
-  }
-
-  String _phoneAuthRequestFailureMessage(Object error) {
-    if (error is FirebaseAuthException) {
-      switch (error.code) {
-        case 'too-many-requests':
-        case 'phone-auth-cooldown':
-        case 'phone-auth-attempt-limit':
-          return 'تمت محاولات كثيرة لإرسال الرمز. انتظر قليلاً ثم حاول مرة واحدة فقط.';
-        case 'internal-error':
-          return 'تعذر إرسال رمز التحقق. تم حفظ تقرير الخطأ للمراجعة، حاول لاحقاً.';
-      }
-    }
-    return 'تعذر إرسال رمز التحقق، حاول لاحقاً.';
   }
 
   void _showMessage(String text) {

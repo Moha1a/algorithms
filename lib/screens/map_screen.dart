@@ -20,7 +20,6 @@ class MapScreen extends StatelessWidget {
   final Map<String, dynamic> profile;
 
   double _commissionFromBooking(Map<String, dynamic> b) {
-    final amount = (b['amount'] is num) ? (b['amount'] as num).toDouble() : double.tryParse((b['amount'] ?? '0').toString()) ?? 0;
     if (b['commission'] is num) return (b['commission'] as num).toDouble();
     final entered = double.tryParse((b['price'] ?? '').toString());
     return entered ?? 0;
@@ -39,7 +38,8 @@ class MapScreen extends StatelessWidget {
 
   void _showControlledMessage(BuildContext context, String message) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _openBookingFromMapTap({
@@ -60,28 +60,42 @@ class MapScreen extends StatelessWidget {
       final amount = _safeDouble(raw['amount']);
       final price = _safeDouble(raw['price']);
       final priceProposalsRaw = raw['priceProposals'];
-      final proposalsCount = (priceProposalsRaw is List) ? priceProposalsRaw.length : 0;
+      final proposalsCount =
+          (priceProposalsRaw is List) ? priceProposalsRaw.length : 0;
 
-      debugPrint('MAP_BOOKING_TAP_DATA bookingId=$bookingId docId=$bookingDocId clientId=$clientId createdById=$createdById outletId=$outletId status=$status amount=$amount price=$price proposals=$proposalsCount');
+      debugPrint(
+          'MAP_BOOKING_TAP_DATA bookingId=$bookingId docId=$bookingDocId clientId=$clientId createdById=$createdById outletId=$outletId status=$status amount=$amount price=$price proposals=$proposalsCount');
 
       if (bookingDocId.isEmpty) {
-        _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+        _showControlledMessage(
+            context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
         return;
       }
 
       debugPrint('MAP_BOOKING_OPEN_START');
-      final fresh = await FirebaseFirestore.instance.collection('bookings').doc(bookingDocId).get().timeout(const Duration(seconds: 8));
+      final fresh = await FirebaseFirestore.instance
+          .collection('bookings')
+          .doc(bookingDocId)
+          .get()
+          .timeout(const Duration(seconds: 8));
       if (!fresh.exists || fresh.data() == null) {
-        _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+        _showControlledMessage(
+            context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
         return;
       }
 
       final freshData = fresh.data()!;
       final lat = _safeDouble(freshData['clientLat'], fallback: double.nan);
       final lng = _safeDouble(freshData['clientLng'], fallback: double.nan);
-      final hasValidCoordinates = lat.isFinite && lng.isFinite && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+      final hasValidCoordinates = lat.isFinite &&
+          lng.isFinite &&
+          lat >= -90 &&
+          lat <= 90 &&
+          lng >= -180 &&
+          lng <= 180;
       if (!hasValidCoordinates) {
-        _showControlledMessage(context, 'تعذر تحديد الإحداثيات بدقة، سيتم فتح تفاصيل الطلب بشكل آمن.');
+        _showControlledMessage(context,
+            'تعذر تحديد الإحداثيات بدقة، سيتم فتح تفاصيل الطلب بشكل آمن.');
       }
 
       if (!context.mounted) return;
@@ -97,15 +111,18 @@ class MapScreen extends StatelessWidget {
     } on FirebaseException catch (error, stackTrace) {
       debugPrint('MAP_BOOKING_OPEN_FAILED_CONTROLLED: $error');
       debugPrint('$stackTrace');
-      _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+      _showControlledMessage(
+          context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
     } on TimeoutException catch (error, stackTrace) {
       debugPrint('MAP_BOOKING_OPEN_FAILED_CONTROLLED: $error');
       debugPrint('$stackTrace');
-      _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+      _showControlledMessage(
+          context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
     } catch (error, stackTrace) {
       debugPrint('MAP_BOOKING_OPEN_FAILED_CONTROLLED: $error');
       debugPrint('$stackTrace');
-      _showControlledMessage(context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
+      _showControlledMessage(
+          context, 'تعذر فتح الطلب، قد يكون محذوفاً أو غير متاح');
     }
   }
 
@@ -120,8 +137,11 @@ class MapScreen extends StatelessWidget {
     final stream = FirebaseFirestore.instance
         .collection('bookings')
         .where(field, isEqualTo: uid)
-        .where('status', whereIn: ['accepted', 'in_progress', 'awaiting_provider_code'])
-        .snapshots();
+        .where('status', whereIn: [
+      'accepted',
+      'in_progress',
+      'awaiting_provider_code'
+    ]).snapshots();
 
     return Scaffold(
       appBar: AppBar(title: const Text('منفذك - الخريطة')),
@@ -188,13 +208,17 @@ class BookingMapDetailsScreen extends StatefulWidget {
   final String currentUserId;
 
   @override
-  State<BookingMapDetailsScreen> createState() => _BookingMapDetailsScreenState();
+  State<BookingMapDetailsScreen> createState() =>
+      _BookingMapDetailsScreenState();
 }
 
 class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
   static const String _rashidOutletName = 'منفذ الراشد';
 
-  final TextEditingController _completionCodeController = TextEditingController();
+  final TextEditingController _completionCodeController =
+      TextEditingController();
+  final TextEditingController _receiptAmountController =
+      TextEditingController();
   Timer? _countdownTimer;
   int _codeSecondsLeft = 0;
   String? _visibleSecretCode;
@@ -204,6 +228,7 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
   void dispose() {
     _countdownTimer?.cancel();
     _completionCodeController.dispose();
+    _receiptAmountController.dispose();
     super.dispose();
   }
 
@@ -214,7 +239,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
   Future<bool> _isRashidOutletUser(String uid) async {
     if (uid.trim().isEmpty) return false;
     try {
-      final snap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final snap =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
       final data = snap.data();
       final role = (data?['role'] ?? '').toString();
       if (role != 'outlet') return false;
@@ -233,15 +259,22 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('bookings').doc(widget.bookingDocId).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('bookings')
+          .doc(widget.bookingDocId)
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
         final booking = snapshot.data?.data();
-        FirebaseCrashlytics.instance.setCustomKey('map_open_source', 'tracking_button');
-        FirebaseCrashlytics.instance.setCustomKey('booking_id', widget.bookingDocId);
-        FirebaseCrashlytics.instance.setCustomKey('current_user_role', widget.role);
+        FirebaseCrashlytics.instance
+            .setCustomKey('map_open_source', 'tracking_button');
+        FirebaseCrashlytics.instance
+            .setCustomKey('booking_id', widget.bookingDocId);
+        FirebaseCrashlytics.instance
+            .setCustomKey('current_user_role', widget.role);
         if (booking == null) {
           return Scaffold(
             appBar: AppBar(title: const Text('تفاصيل الطلب')),
@@ -249,7 +282,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
           );
         }
 
-        final bookingId = (booking['bookingId'] ?? widget.bookingDocId).toString();
+        final bookingId =
+            (booking['bookingId'] ?? widget.bookingDocId).toString();
         final type = (booking['type'] ?? '').toString();
         final amount = (booking['amount'] ?? 0).toString();
         final price = (booking['price'] ?? 0).toString();
@@ -264,98 +298,155 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
         );
         final clientName = (booking['clientName'] ?? '').toString();
         final outletName = (booking['outletName'] ?? '').toString();
+        final outletGovernorate =
+            (booking['outletGovernorate'] ?? booking['governorate'] ?? '')
+                .toString()
+                .trim();
+        final outletRegion = (booking['outletRegion'] ?? '').toString().trim();
+        final outletAreaText = [
+          if (outletGovernorate.isNotEmpty) outletGovernorate,
+          if (outletRegion.isNotEmpty) outletRegion,
+        ].join(' - ');
 
-        final client = _extractLatLng(booking, candidateRoots: ['clientLocation', 'client']);
-        final outlet = _extractLatLng(booking, candidateRoots: ['outletLocation', 'outlet']);
+        final client = _extractLatLng(booking,
+            candidateRoots: ['clientLocation', 'client']);
+        final outlet = _extractLatLng(booking,
+            candidateRoots: ['outletLocation', 'outlet']);
+
+        final detailsBody = ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            SizedBox(
+              height: 280,
+              child: _LiveTripMap(client: client, outlet: outlet),
+            ),
+            if (client == null && outlet == null)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'تعذر تحديد الإحداثيات الدقيقة للطرفين حالياً، لكن شاشة الطلب ما زالت متاحة.',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+              ),
+            const SizedBox(height: 12),
+            if (client != null || outlet != null)
+              FilledButton.icon(
+                onPressed: () =>
+                    _openMapLink(context, client: client, outlet: outlet),
+                icon: const Icon(Icons.open_in_new_rounded),
+                label: const Text('فتح الاتجاهات في خرائط Google'),
+              ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => SupportChatScreen(
+                      threadPath: 'booking_chats/$bookingId/messages',
+                      currentUserId: widget.currentUserId,
+                      title: widget.role == 'client'
+                          ? 'مراسلة المنفذ'
+                          : 'مراسلة العميل',
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.chat_bubble_outline_rounded),
+              label: Text(
+                  widget.role == 'client' ? 'مراسلة المنفذ' : 'مراسلة العميل'),
+            ),
+            const SizedBox(height: 12),
+            _buildCompletionSection(context, booking, status),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('أطراف الطلب',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    if (widget.role == 'outlet' && clientName.isNotEmpty)
+                      Text('العميل: $clientName'),
+                    if (widget.role == 'client' && outletName.isNotEmpty)
+                      Text('المنفذ: $outletName'),
+                    if (widget.role == 'client' && outletAreaText.isNotEmpty)
+                      Text('منطقة المنفذ: $outletAreaText'),
+                  ],
+                ),
+              ),
+            ),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('الملخص المالي',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    const Text('الاستلام والتسليم',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    Text(
+                        'سلّم: ${MoneyUtils.iqdWithWords(double.tryParse(summary.$1) ?? 0)}'),
+                    Text(
+                        'استلم: ${MoneyUtils.iqdWithWords(double.tryParse(summary.$2) ?? 0)}'),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => _cancelBookingWithConfirmation(status: status),
+              icon: const Icon(Icons.cancel_outlined),
+              label: const Text('إلغاء الطلب'),
+            ),
+          ],
+        );
+
+        if (type == 'withdraw') {
+          return DefaultTabController(
+            length: 2,
+            child: Scaffold(
+              appBar: AppBar(
+                title: const Text('تفاصيل الطلب'),
+                bottom: const TabBar(
+                  tabs: [
+                    Tab(text: 'الموقع'),
+                    Tab(text: 'حساب عمولة السحب'),
+                  ],
+                ),
+              ),
+              body: TabBarView(
+                children: [
+                  detailsBody,
+                  ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      _buildWithdrawalCommissionCalculator(booking),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
 
         return Scaffold(
           appBar: AppBar(title: const Text('تفاصيل الطلب')),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              SizedBox(
-                height: 280,
-                child: _LiveTripMap(client: client, outlet: outlet),
-              ),
-              if (client == null && outlet == null)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'تعذر تحديد الإحداثيات الدقيقة للطرفين حالياً، لكن شاشة الطلب ما زالت متاحة.',
-                    style: TextStyle(color: Colors.redAccent),
-                  ),
-                ),
-              const SizedBox(height: 12),
-              if (client != null || outlet != null)
-                FilledButton.icon(
-                  onPressed: () => _openMapLink(context, client: client, outlet: outlet),
-                  icon: const Icon(Icons.open_in_new_rounded),
-                  label: const Text('فتح الاتجاهات في خرائط Google'),
-                ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => SupportChatScreen(
-                        threadPath: 'booking_chats/$bookingId/messages',
-                        currentUserId: widget.currentUserId,
-                        title: widget.role == 'client' ? 'مراسلة المنفذ' : 'مراسلة العميل',
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.chat_bubble_outline_rounded),
-                label: Text(widget.role == 'client' ? 'مراسلة المنفذ' : 'مراسلة العميل'),
-              ),
-              const SizedBox(height: 12),
-              _buildCompletionSection(context, booking, status),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('أطراف الطلب', style: TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      if (widget.role == 'outlet' && clientName.isNotEmpty) Text('العميل: $clientName'),
-                      if (widget.role == 'client' && outletName.isNotEmpty) Text('المنفذ: $outletName'),
-                    ],
-                  ),
-                ),
-              ),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('الملخص المالي', style: TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      const Text('الاستلام والتسليم', style: TextStyle(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      Text('سلّم: ${MoneyUtils.iqdWithWords(double.tryParse(summary.$1) ?? 0)}'),
-                      Text('استلم: ${MoneyUtils.iqdWithWords(double.tryParse(summary.$2) ?? 0)}'),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () => _cancelBookingWithConfirmation(status: status),
-                icon: const Icon(Icons.cancel_outlined),
-                label: const Text('إلغاء الطلب'),
-              ),
-            ],
-          ),
+          body: detailsBody,
         );
       },
     );
   }
 
-  Widget _buildCompletionSection(BuildContext context, Map<String, dynamic> booking, String status) {
-    final isRequester = (booking['clientId'] ?? '').toString() == widget.currentUserId;
-    final isProvider = (booking['outletId'] ?? '').toString() == widget.currentUserId;
+  Widget _buildCompletionSection(
+      BuildContext context, Map<String, dynamic> booking, String status) {
+    final isRequester =
+        (booking['clientId'] ?? '').toString() == widget.currentUserId;
+    final isProvider =
+        (booking['outletId'] ?? '').toString() == widget.currentUserId;
 
     return Card(
       child: Padding(
@@ -363,7 +454,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('إكمال الطلب', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text('إكمال الطلب',
+                style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             if (isRequester && status == 'accepted')
               FilledButton(
@@ -383,7 +475,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
                 controller: _completionCodeController,
                 keyboardType: TextInputType.number,
                 inputFormatters: const [DigitOnlyInputFormatter()],
-                decoration: const InputDecoration(labelText: 'أدخل رمز الإكمال'),
+                decoration:
+                    const InputDecoration(labelText: 'أدخل رمز الإكمال'),
               ),
               const SizedBox(height: 8),
               FilledButton(
@@ -394,7 +487,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
             if (status == 'completed')
               const Padding(
                 padding: EdgeInsets.only(top: 6),
-                child: Text('تم إكمال الطلب بنجاح.', style: TextStyle(color: Colors.green)),
+                child: Text('تم إكمال الطلب بنجاح.',
+                    style: TextStyle(color: Colors.green)),
               ),
           ],
         ),
@@ -402,8 +496,184 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
     );
   }
 
+  Widget _buildWithdrawalCommissionCalculator(Map<String, dynamic> booking) {
+    final bookingCommission = (booking['commission'] is num)
+        ? (booking['commission'] as num).toDouble()
+        : double.tryParse((booking['price'] ?? '0').toString()) ?? 0;
+    final requestOwnerRole = (booking['requestOwnerRole'] ?? '').toString();
+    final bankRate = requestOwnerRole == 'outlet' ? 0.003 : 0.006;
+    final bookingAmount = (booking['amount'] is num)
+        ? (booking['amount'] as num).toDouble()
+        : double.tryParse((booking['amount'] ?? '0').toString()) ?? 0;
+    final pricePerMillion = (booking['pricePerMillion'] is num)
+        ? (booking['pricePerMillion'] as num).toDouble()
+        : bookingAmount > 0
+            ? (bookingCommission * 1000000.0) / bookingAmount
+            : bookingCommission;
+
+    return StatefulBuilder(
+      builder: (context, setLocalState) {
+        final receiptAmount = double.tryParse(MoneyUtils.normalizeDigitsOnly(
+                _receiptAmountController.text)) ??
+            0;
+        final receiptRounded = _roundToNearestIraqiCash(receiptAmount);
+        final outletReceivedRaw = receiptRounded + (receiptRounded * bankRate);
+        final outletReceived = _roundToNearestIraqiCash(outletReceivedRaw);
+        final calculatedCommission = _roundToNearestIraqiCash(
+          (outletReceived / 1000000.0) * pricePerMillion,
+        );
+        final clientShouldReceive =
+            _roundToNearestIraqiCash(outletReceived - calculatedCommission);
+
+        return Card(
+          color: const Color(0xFFFFFBF2),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: Color(0xFFFFD89B)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'حساب عمولة السحب',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF1D6),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Text(
+                    'عمولة المصرف أو الشركة تُحسب على أن المنفذ استلمها. كل المبالغ في هذه الحاسبة تُقرب حسب فئات العملة العراقية.',
+                    style: TextStyle(
+                      color: Colors.deepOrange,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Color(0xFFBFDBFE)),
+                  ),
+                  child: const Text(
+                    'هذه الحاسبة تُعتمد إذا كان نوع العملية في أعلى الوصل صرف سريع فقط.',
+                    style: TextStyle(
+                      color: Color(0xFF1E3A8A),
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _receiptAmountController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: const [MoneyInputFormatter()],
+                  decoration: const InputDecoration(
+                    labelText: 'المبلغ في الوصل',
+                    prefixIcon: Icon(Icons.receipt_long_rounded),
+                  ),
+                  onChanged: (_) => setLocalState(() {}),
+                ),
+                const SizedBox(height: 12),
+                _calculatorRow(
+                  'المبلغ في الوصل بعد التقريب',
+                  MoneyUtils.formatIqD(receiptRounded),
+                ),
+                _calculatorRow(
+                  'نسبة عمولة المصرف/الشركة',
+                  bankRate == 0.003 ? '0.003' : '0.006',
+                ),
+                _calculatorRow(
+                  'عمولة المنفذ لكل مليون',
+                  MoneyUtils.formatIqD(
+                      _roundToNearestIraqiCash(pricePerMillion)),
+                ),
+                _calculatorRow(
+                  'العمولة المحسوبة حسب مبلغ الوصل',
+                  MoneyUtils.formatIqD(calculatedCommission),
+                ),
+                _calculatorRow(
+                  'المبلغ الذي استلمه المنفذ',
+                  MoneyUtils.formatIqD(outletReceived),
+                  highlight: true,
+                ),
+                _calculatorRow(
+                  'عمولة المنفذ في الطلب',
+                  '- ${MoneyUtils.formatIqD(calculatedCommission)}',
+                ),
+                const Divider(height: 22),
+                _calculatorRow(
+                  'المبلغ الذي يجب أن يستلمه العميل',
+                  MoneyUtils.formatIqD(clientShouldReceive),
+                  highlight: true,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _calculatorRow(String label, String value, {bool highlight = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: highlight ? Colors.black : Colors.black54,
+                fontWeight: highlight ? FontWeight.w900 : FontWeight.w700,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: highlight ? Colors.deepOrange : Colors.black87,
+              fontSize: highlight ? 18 : 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  double _roundToNearestIraqiCash(double value) {
+    if (value <= 0) return 0;
+    final whole = value.round();
+    final thousands = (whole ~/ 1000) * 1000;
+    final remainder = whole - thousands;
+    const cashSteps = [0, 250, 500, 750, 1000];
+    var nearest = cashSteps.first;
+    var nearestDistance = (remainder - nearest).abs();
+    for (final step in cashSteps.skip(1)) {
+      final distance = (remainder - step).abs();
+      if (distance < nearestDistance) {
+        nearest = step;
+        nearestDistance = distance;
+      }
+    }
+    return (thousands + nearest).toDouble();
+  }
+
   Future<void> _markArrivalWithoutShowingCode() async {
-    await FirebaseFirestore.instance.collection('bookings').doc(widget.bookingDocId).update({
+    await FirebaseFirestore.instance
+        .collection('bookings')
+        .doc(widget.bookingDocId)
+        .update({
       'status': 'awaiting_provider_code',
       'arrivalMarkedAt': FieldValue.serverTimestamp(),
       'arrivalMarkedBy': widget.currentUserId,
@@ -413,14 +683,20 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
     });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم تسجيل الوصول. يمكنك الآن الضغط على "إظهار الرمز السري".')),
+      const SnackBar(
+          content: Text(
+              'تم تسجيل الوصول. يمكنك الآن الضغط على "إظهار الرمز السري".')),
     );
   }
 
   Future<(String, DateTime)> _generateNewSecretCode() async {
-    final code = (100000 + (DateTime.now().millisecondsSinceEpoch % 900000)).toString();
+    final code =
+        (100000 + (DateTime.now().millisecondsSinceEpoch % 900000)).toString();
     final expiresAt = DateTime.now().add(const Duration(seconds: 30));
-    await FirebaseFirestore.instance.collection('bookings').doc(widget.bookingDocId).update({
+    await FirebaseFirestore.instance
+        .collection('bookings')
+        .doc(widget.bookingDocId)
+        .update({
       'status': 'awaiting_provider_code',
       'arrivalMarkedBy': widget.currentUserId,
       'completionCode': code,
@@ -430,19 +706,22 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
     return (code, expiresAt);
   }
 
-  void _startCountdown(DateTime expiresAt, void Function(void Function()) setModalState) {
+  void _startCountdown(
+      DateTime expiresAt, void Function(void Function()) setModalState) {
     _countdownTimer?.cancel();
     void tick() {
       final diff = expiresAt.difference(DateTime.now()).inSeconds;
       setModalState(() => _codeSecondsLeft = diff < 0 ? 0 : diff);
     }
+
     tick();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
   }
 
   Future<void> _openSecretCodeSheet(Map<String, dynamic> booking) async {
     final status = (booking['status'] ?? '').toString();
-    final isRequester = (booking['clientId'] ?? '').toString() == widget.currentUserId;
+    final isRequester =
+        (booking['clientId'] ?? '').toString() == widget.currentUserId;
     if (!isRequester || status != 'awaiting_provider_code') return;
 
     final existingCode = (booking['completionCode'] ?? '').toString().trim();
@@ -454,16 +733,25 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
 
     _visibleSecretCode = existingCode.isEmpty ? null : existingCode;
     if (existingExpiry != null) {
-      _codeSecondsLeft = existingExpiry.difference(DateTime.now()).inSeconds.clamp(0, 1 << 30).toInt();
+      _codeSecondsLeft = existingExpiry
+          .difference(DateTime.now())
+          .inSeconds
+          .clamp(0, 1 << 30)
+          .toInt();
     } else {
       _codeSecondsLeft = 0;
     }
-    final shouldGenerateNow = _visibleSecretCode == null || _codeSecondsLeft <= 0;
+    final shouldGenerateNow =
+        _visibleSecretCode == null || _codeSecondsLeft <= 0;
     if (shouldGenerateNow) {
       final generated = await _generateNewSecretCode();
       _visibleSecretCode = generated.$1;
       existingExpiry = generated.$2;
-      _codeSecondsLeft = existingExpiry.difference(DateTime.now()).inSeconds.clamp(0, 1 << 30).toInt();
+      _codeSecondsLeft = existingExpiry
+          .difference(DateTime.now())
+          .inSeconds
+          .clamp(0, 1 << 30)
+          .toInt();
     }
 
     await showDialog<void>(
@@ -471,7 +759,9 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
       barrierDismissible: true,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setModalState) {
-          if (existingExpiry != null && _codeSecondsLeft > 0 && _countdownTimer == null) {
+          if (existingExpiry != null &&
+              _codeSecondsLeft > 0 &&
+              _countdownTimer == null) {
             _startCountdown(existingExpiry!, setModalState);
           }
           return AlertDialog(
@@ -482,7 +772,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
               children: [
                 const Text(
                   'تحذير قانوني ومالي: مشاركة الرمز تعني إقرارًا رسميًا من صاحب الطلب بأنه استلم المبلغ بالكامل وأن العملية المالية تمت بنجاح.',
-                  style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                      color: Colors.redAccent, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 10),
                 Container(
@@ -497,7 +788,9 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _visibleSecretCode == null ? 'لم يتم إنشاء رمز بعد' : 'الرمز الحالي: $_visibleSecretCode',
+                        _visibleSecretCode == null
+                            ? 'لم يتم إنشاء رمز بعد'
+                            : 'الرمز الحالي: $_visibleSecretCode',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 6),
@@ -517,7 +810,9 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
                           setModalState(() {});
                         },
                   icon: const Icon(Icons.refresh_rounded),
-                  label: Text(_codeSecondsLeft > 0 ? 'انتظر انتهاء العداد للتجديد' : 'تجديد الرمز (30 ثانية)'),
+                  label: Text(_codeSecondsLeft > 0
+                      ? 'انتظر انتهاء العداد للتجديد'
+                      : 'تجديد الرمز (30 ثانية)'),
                 ),
                 const Text(
                   'هذا الرمز مؤقت وسينتهي تلقائيًا عند انتهاء العدّاد.',
@@ -539,7 +834,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
     _countdownTimer = null;
   }
 
-  void _maybeHandleCompletionTransition(Map<String, dynamic> booking, String status) {
+  void _maybeHandleCompletionTransition(
+      Map<String, dynamic> booking, String status) {
     if (status != 'completed' || _completionHandled) return;
     _completionHandled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -551,7 +847,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
     });
   }
 
-  Future<void> _openRatingDialogAfterCompletion(Map<String, dynamic> booking) async {
+  Future<void> _openRatingDialogAfterCompletion(
+      Map<String, dynamic> booking) async {
     int stars = 5;
     final noteController = TextEditingController();
     final targetRoleLabel = _rateTargetRoleLabel(booking);
@@ -573,11 +870,15 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
                     children: List.generate(5, (index) {
                       final selected = index < stars;
                       return IconButton(
-                        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                        constraints:
+                            const BoxConstraints(minWidth: 40, minHeight: 40),
                         padding: const EdgeInsets.all(6),
-                        onPressed: () => setStateDialog(() => stars = index + 1),
+                        onPressed: () =>
+                            setStateDialog(() => stars = index + 1),
                         icon: Icon(
-                          selected ? Icons.star_rounded : Icons.star_border_rounded,
+                          selected
+                              ? Icons.star_rounded
+                              : Icons.star_border_rounded,
                           color: selected ? Colors.amber : Colors.grey,
                         ),
                       );
@@ -585,7 +886,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
                   ),
                   TextField(
                     controller: noteController,
-                    decoration: const InputDecoration(labelText: 'ملاحظات (اختياري)'),
+                    decoration:
+                        const InputDecoration(labelText: 'ملاحظات (اختياري)'),
                   ),
                 ],
               ),
@@ -605,7 +907,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
       );
       if (ok != true || !mounted) return;
 
-      final bookingId = (booking['bookingId'] ?? widget.bookingDocId).toString();
+      final bookingId =
+          (booking['bookingId'] ?? widget.bookingDocId).toString();
       final fromUserId = widget.currentUserId;
       final toUserId = ((booking['clientId'] ?? '').toString() == fromUserId)
           ? (booking['outletId'] ?? '').toString()
@@ -631,45 +934,63 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       });
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('شكراً، تم إرسال تقييمك.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('شكراً، تم إرسال تقييمك.')));
     } finally {
       noteController.dispose();
     }
   }
 
   String _rateTargetRoleLabel(Map<String, dynamic> booking) {
-    final isClient = (booking['clientId'] ?? '').toString() == widget.currentUserId;
+    final isClient =
+        (booking['clientId'] ?? '').toString() == widget.currentUserId;
     return isClient ? 'المنفذ' : 'العميل';
   }
 
   String _rateTargetRoleValue(Map<String, dynamic> booking) {
-    final isClient = (booking['clientId'] ?? '').toString() == widget.currentUserId;
+    final isClient =
+        (booking['clientId'] ?? '').toString() == widget.currentUserId;
     return isClient ? 'outlet' : 'client';
   }
 
   Future<void> _confirmCompletion() async {
-    final enteredCode = InputDigitUtils.digitsOnly(_completionCodeController.text);
+    final enteredCode =
+        InputDigitUtils.digitsOnly(_completionCodeController.text);
     if (enteredCode.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال الرمز أولاً')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('يرجى إدخال الرمز أولاً')));
       return;
     }
     try {
       await FirebaseFirestore.instance.runTransaction((tx) async {
-        final ref = FirebaseFirestore.instance.collection('bookings').doc(widget.bookingDocId);
+        final ref = FirebaseFirestore.instance
+            .collection('bookings')
+            .doc(widget.bookingDocId);
         final snap = await tx.get(ref);
         final data = snap.data() ?? <String, dynamic>{};
         final status = (data['status'] ?? '').toString();
         final storedCode = (data['completionCode'] ?? '').toString();
         final expiresRaw = data['completionCodeExpiresAt'];
-        final expiresAt = expiresRaw is Timestamp ? expiresRaw.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
+        final expiresAt = expiresRaw is Timestamp
+            ? expiresRaw.toDate()
+            : DateTime.fromMillisecondsSinceEpoch(0);
         if (status != 'awaiting_provider_code') {
-          throw FirebaseException(plugin: 'cloud_firestore', code: 'invalid-state', message: 'الحالة الحالية لا تسمح بالإكمال.');
+          throw FirebaseException(
+              plugin: 'cloud_firestore',
+              code: 'invalid-state',
+              message: 'الحالة الحالية لا تسمح بالإكمال.');
         }
         if (DateTime.now().isAfter(expiresAt)) {
-          throw FirebaseException(plugin: 'cloud_firestore', code: 'code-expired', message: 'انتهت صلاحية الرمز. اطلب رمزًا جديدًا.');
+          throw FirebaseException(
+              plugin: 'cloud_firestore',
+              code: 'code-expired',
+              message: 'انتهت صلاحية الرمز. اطلب رمزًا جديدًا.');
         }
         if (storedCode.isEmpty || enteredCode != storedCode) {
-          throw FirebaseException(plugin: 'cloud_firestore', code: 'invalid-code', message: 'الرمز غير صحيح.');
+          throw FirebaseException(
+              plugin: 'cloud_firestore',
+              code: 'invalid-code',
+              message: 'الرمز غير صحيح.');
         }
         tx.update(ref, {
           'status': 'completed',
@@ -681,10 +1002,12 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
       });
       if (!mounted) return;
       _completionCodeController.clear();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إكمال الطلب بنجاح.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('تم إكمال الطلب بنجاح.')));
     } on FirebaseException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'تعذر إكمال الطلب.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? 'تعذر إكمال الطلب.')));
     }
   }
 
@@ -709,11 +1032,14 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
     if (confirm != true || !mounted) return;
 
     final uid = widget.currentUserId;
-    final isAfterAcceptance = status == 'accepted' || status == 'in_progress' || status == 'awaiting_provider_code';
+    final isAfterAcceptance = status == 'accepted' ||
+        status == 'in_progress' ||
+        status == 'awaiting_provider_code';
     final db = FirebaseFirestore.instance;
     final bookingRef = db.collection('bookings').doc(widget.bookingDocId);
     final rashidUnlimitedCancellation = await _isRashidOutletUser(uid);
-    FirebaseCrashlytics.instance.setCustomKey('rashid_unlimited_cancellation', rashidUnlimitedCancellation);
+    FirebaseCrashlytics.instance.setCustomKey(
+        'rashid_unlimited_cancellation', rashidUnlimitedCancellation);
 
     if (!isAfterAcceptance) {
       await bookingRef.update({
@@ -722,20 +1048,24 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
         'cancelledBy': uid,
       });
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إلغاء الطلب')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('تم إلغاء الطلب')));
       Navigator.of(context).maybePop();
       return;
     }
 
     final now = DateTime.now();
     final dayKey = '${now.year}-${now.month}-${now.day}';
-    final dailyRef = db.collection('bookingCancellationDaily').doc('${uid}_$dayKey');
+    final dailyRef =
+        db.collection('bookingCancellationDaily').doc('${uid}_$dayKey');
 
     try {
       await db.runTransaction((tx) async {
         final bookingSnap = await tx.get(bookingRef);
         final currentStatus = (bookingSnap.data()?['status'] ?? '').toString();
-        final acceptedState = currentStatus == 'accepted' || currentStatus == 'in_progress' || currentStatus == 'awaiting_provider_code';
+        final acceptedState = currentStatus == 'accepted' ||
+            currentStatus == 'in_progress' ||
+            currentStatus == 'awaiting_provider_code';
         if (!acceptedState) {
           tx.update(bookingRef, {
             'status': 'cancelled',
@@ -764,35 +1094,44 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
           'cancelledBy': uid,
         });
         if (!rashidUnlimitedCancellation) {
-          tx.set(dailyRef, {
-            'userId': uid,
-            'dayKey': dayKey,
-            'count': currentCount + 1,
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          tx.set(
+              dailyRef,
+              {
+                'userId': uid,
+                'dayKey': dayKey,
+                'count': currentCount + 1,
+                'updatedAt': FieldValue.serverTimestamp(),
+              },
+              SetOptions(merge: true));
         }
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إلغاء الطلب')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('تم إلغاء الطلب')));
       Navigator.of(context).maybePop();
     } on FirebaseException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'تعذر إلغاء الطلب')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? 'تعذر إلغاء الطلب')));
     }
   }
 
-  Future<void> _openMapLink(BuildContext context, {LatLng? client, LatLng? outlet}) async {
-    final rawDestination = widget.role == 'client' ? (outlet ?? client) : (client ?? outlet);
+  Future<void> _openMapLink(BuildContext context,
+      {LatLng? client, LatLng? outlet}) async {
+    final rawDestination =
+        widget.role == 'client' ? (outlet ?? client) : (client ?? outlet);
     final rawOrigin = widget.role == 'client' ? client : outlet;
     final destination = _isValidLatLng(rawDestination) ? rawDestination : null;
     final origin = _isValidLatLng(rawOrigin) ? rawOrigin : null;
 
     if (destination == null) {
-      FirebaseCrashlytics.instance.log('map_directions_blocked_invalid_destination');
+      FirebaseCrashlytics.instance
+          .log('map_directions_blocked_invalid_destination');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لا توجد إحداثيات صالحة لفتح الاتجاهات.')),
+          const SnackBar(
+              content: Text('لا توجد إحداثيات صالحة لفتح الاتجاهات.')),
         );
       }
       return;
@@ -815,38 +1154,55 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
     );
 
     final candidates = <({String source, Uri uri, bool requiresCanLaunch})>[
-      (source: 'google_maps_app', uri: googleMapsAppUri, requiresCanLaunch: true),
+      (
+        source: 'google_maps_app',
+        uri: googleMapsAppUri,
+        requiresCanLaunch: true
+      ),
       (source: 'apple_maps', uri: appleMapsUri, requiresCanLaunch: false),
-      (source: 'google_maps_web', uri: webFallbackUri, requiresCanLaunch: false),
+      (
+        source: 'google_maps_web',
+        uri: webFallbackUri,
+        requiresCanLaunch: false
+      ),
     ];
 
     for (final candidate in candidates) {
       try {
-        FirebaseCrashlytics.instance.setCustomKey('map_directions_launch_source', candidate.source);
+        FirebaseCrashlytics.instance
+            .setCustomKey('map_directions_launch_source', candidate.source);
         if (candidate.requiresCanLaunch && !await canLaunchUrl(candidate.uri)) {
           debugPrint('[MAP DIRECTIONS] ${candidate.source} unavailable');
           continue;
         }
 
-        final launched = await launchUrl(candidate.uri, mode: LaunchMode.externalApplication);
-        FirebaseCrashlytics.instance.setCustomKey('map_directions_launch_success', launched);
-        debugPrint('[MAP DIRECTIONS] source=${candidate.source} success=$launched');
+        final launched = await launchUrl(candidate.uri,
+            mode: LaunchMode.externalApplication);
+        FirebaseCrashlytics.instance
+            .setCustomKey('map_directions_launch_success', launched);
+        debugPrint(
+            '[MAP DIRECTIONS] source=${candidate.source} success=$launched');
         if (launched) return;
       } catch (error, stackTrace) {
         debugPrint('[MAP DIRECTIONS] ${candidate.source} failed: $error');
-        FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+        FirebaseCrashlytics.instance
+            .recordError(error, stackTrace, fatal: false);
       }
     }
 
-    FirebaseCrashlytics.instance.setCustomKey('map_directions_launch_success', false);
+    FirebaseCrashlytics.instance
+        .setCustomKey('map_directions_launch_success', false);
     FirebaseCrashlytics.instance.recordError(
-      StateError('Failed to launch Google Maps, Apple Maps, or browser fallback for directions.'),
+      StateError(
+          'Failed to launch Google Maps, Apple Maps, or browser fallback for directions.'),
       StackTrace.current,
       fatal: false,
     );
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر فتح الاتجاهات. تأكد من توفر خرائط Google أو خرائط Apple ثم حاول مرة أخرى.')),
+        const SnackBar(
+            content: Text(
+                'تعذر فتح الاتجاهات. تأكد من توفر خرائط Google أو خرائط Apple ثم حاول مرة أخرى.')),
       );
     }
   }
@@ -860,7 +1216,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
     return true;
   }
 
-  LatLng? _extractLatLng(Map<String, dynamic> booking, {required List<String> candidateRoots}) {
+  LatLng? _extractLatLng(Map<String, dynamic> booking,
+      {required List<String> candidateRoots}) {
     for (final root in candidateRoots) {
       final node = booking[root];
       if (node is Map) {
@@ -870,8 +1227,16 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
       }
     }
 
-    final latKeys = ['${candidateRoots.first}Lat', '${candidateRoots.first}_lat', candidateRoots.first == 'clientLocation' ? 'clientLat' : 'outletLat'];
-    final lngKeys = ['${candidateRoots.first}Lng', '${candidateRoots.first}_lng', candidateRoots.first == 'clientLocation' ? 'clientLng' : 'outletLng'];
+    final latKeys = [
+      '${candidateRoots.first}Lat',
+      '${candidateRoots.first}_lat',
+      candidateRoots.first == 'clientLocation' ? 'clientLat' : 'outletLat'
+    ];
+    final lngKeys = [
+      '${candidateRoots.first}Lng',
+      '${candidateRoots.first}_lng',
+      candidateRoots.first == 'clientLocation' ? 'clientLng' : 'outletLng'
+    ];
 
     for (int i = 0; i < latKeys.length; i++) {
       final lat = _num(booking[latKeys[i]]);
@@ -883,7 +1248,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
 
   bool _isValidCoordinate(double? lat, double? lng) {
     if (lat == null || lng == null) return false;
-    if (lat.isNaN || lng.isNaN || lat.isInfinite || lng.isInfinite) return false;
+    if (lat.isNaN || lng.isNaN || lat.isInfinite || lng.isInfinite)
+      return false;
     if (lat < -90 || lat > 90) return false;
     if (lng < -180 || lng > 180) return false;
     return true;
@@ -907,7 +1273,8 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
         ? (booking['commission'] as num).toDouble()
         : double.tryParse((booking['price'] ?? '0').toString()) ?? 0;
     final acceptedOutletId = (booking['outletId'] ?? '').toString();
-    final isAcceptedOutlet = acceptedOutletId.isNotEmpty && currentUserId == acceptedOutletId;
+    final isAcceptedOutlet =
+        acceptedOutletId.isNotEmpty && currentUserId == acceptedOutletId;
 
     final withdrawOutletReceive = amountValue;
     final withdrawOutletDeliver = amountValue - commission;
@@ -920,16 +1287,22 @@ class _BookingMapDetailsScreenState extends State<BookingMapDetailsScreen> {
     double receive;
     switch (type) {
       case 'withdraw':
-        deliver = isAcceptedOutlet ? withdrawOutletDeliver : withdrawOutletReceive;
-        receive = isAcceptedOutlet ? withdrawOutletReceive : withdrawOutletDeliver;
+        deliver =
+            isAcceptedOutlet ? withdrawOutletDeliver : withdrawOutletReceive;
+        receive =
+            isAcceptedOutlet ? withdrawOutletReceive : withdrawOutletDeliver;
         break;
       case 'deposit':
-        deliver = isAcceptedOutlet ? depositOutletDeliver : depositOutletReceive;
-        receive = isAcceptedOutlet ? depositOutletReceive : depositOutletDeliver;
+        deliver =
+            isAcceptedOutlet ? depositOutletDeliver : depositOutletReceive;
+        receive =
+            isAcceptedOutlet ? depositOutletReceive : depositOutletDeliver;
         break;
       case 'discharge':
-        deliver = isAcceptedOutlet ? dischargeOutletDeliver : dischargeOutletReceive;
-        receive = isAcceptedOutlet ? dischargeOutletReceive : dischargeOutletDeliver;
+        deliver =
+            isAcceptedOutlet ? dischargeOutletDeliver : dischargeOutletReceive;
+        receive =
+            isAcceptedOutlet ? dischargeOutletReceive : dischargeOutletDeliver;
         break;
       default:
         deliver = amountValue;
@@ -964,13 +1337,20 @@ class _LiveTripMapState extends State<_LiveTripMap> {
     final validClient = _safeLatLng(widget.client);
     final validOutlet = _safeLatLng(widget.outlet);
     final target = validClient ?? validOutlet;
-    FirebaseCrashlytics.instance.setCustomKey('map_plugin_used', 'google_maps_flutter');
-    FirebaseCrashlytics.instance.setCustomKey('client_lat_lng_validity', validClient != null ? 'valid' : 'missing_or_invalid');
-    FirebaseCrashlytics.instance.setCustomKey('outlet_lat_lng_validity', validOutlet != null ? 'valid' : 'missing_or_invalid');
-    FirebaseCrashlytics.instance.setCustomKey('has_client_location', validClient != null);
-    FirebaseCrashlytics.instance.setCustomKey('has_outlet_location', validOutlet != null);
-    FirebaseCrashlytics.instance.setCustomKey('markers_count', (validClient == null ? 0 : 1) + (validOutlet == null ? 0 : 1));
-    FirebaseCrashlytics.instance.setCustomKey('initial_camera_valid', target != null);
+    FirebaseCrashlytics.instance
+        .setCustomKey('map_plugin_used', 'google_maps_flutter');
+    FirebaseCrashlytics.instance.setCustomKey('client_lat_lng_validity',
+        validClient != null ? 'valid' : 'missing_or_invalid');
+    FirebaseCrashlytics.instance.setCustomKey('outlet_lat_lng_validity',
+        validOutlet != null ? 'valid' : 'missing_or_invalid');
+    FirebaseCrashlytics.instance
+        .setCustomKey('has_client_location', validClient != null);
+    FirebaseCrashlytics.instance
+        .setCustomKey('has_outlet_location', validOutlet != null);
+    FirebaseCrashlytics.instance.setCustomKey('markers_count',
+        (validClient == null ? 0 : 1) + (validOutlet == null ? 0 : 1));
+    FirebaseCrashlytics.instance
+        .setCustomKey('initial_camera_valid', target != null);
     FirebaseCrashlytics.instance.setCustomKey('google_map_created', false);
     FirebaseCrashlytics.instance.log('map_widget_build_start');
     if (target == null) {
@@ -992,7 +1372,8 @@ class _LiveTripMapState extends State<_LiveTripMap> {
         Marker(
           markerId: const MarkerId('outlet'),
           position: validOutlet,
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+          icon:
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
           infoWindow: const InfoWindow(title: 'موقع المنفذ'),
         ),
     };
@@ -1030,12 +1411,14 @@ class _LiveTripMapState extends State<_LiveTripMap> {
               onMapCreated: (c) {
                 debugPrint('[MAP INIT] map created');
                 FirebaseCrashlytics.instance.log('map_widget_created');
-                FirebaseCrashlytics.instance.setCustomKey('google_map_created', true);
-                FirebaseCrashlytics.instance.setCustomKey('markers_count', markers.length);
+                FirebaseCrashlytics.instance
+                    .setCustomKey('google_map_created', true);
+                FirebaseCrashlytics.instance
+                    .setCustomKey('markers_count', markers.length);
                 _controller = c;
                 _fitBounds();
               },
-      ),
+            ),
     );
   }
 
@@ -1043,22 +1426,37 @@ class _LiveTripMapState extends State<_LiveTripMap> {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
 
     try {
-      final diagnostics = await _mapsChannel.invokeMapMethod<String, dynamic>('diagnostics') ?? const {};
+      final diagnostics =
+          await _mapsChannel.invokeMapMethod<String, dynamic>('diagnostics') ??
+              const {};
       final keyPresent = diagnostics['ios_maps_key_present'] == true;
-      final keySource = (diagnostics['ios_maps_key_source'] ?? 'unknown').toString();
-      final keyLength = diagnostics['ios_maps_key_length'] is int ? diagnostics['ios_maps_key_length'] as int : 0;
-      final rawPrefix = (diagnostics['ios_maps_key_prefix_only'] ?? '').toString();
-      final keyPrefix = rawPrefix.length > 6 ? rawPrefix.substring(0, 6) : rawPrefix;
+      final keySource =
+          (diagnostics['ios_maps_key_source'] ?? 'unknown').toString();
+      final keyLength = diagnostics['ios_maps_key_length'] is int
+          ? diagnostics['ios_maps_key_length'] as int
+          : 0;
+      final rawPrefix =
+          (diagnostics['ios_maps_key_prefix_only'] ?? '').toString();
+      final keyPrefix =
+          rawPrefix.length > 6 ? rawPrefix.substring(0, 6) : rawPrefix;
       final sdkInitialized = diagnostics['map_sdk_initialized'] == true;
-      final possibleAuthIssue = diagnostics['map_tiles_possible_auth_issue'] == true;
+      final possibleAuthIssue =
+          diagnostics['map_tiles_possible_auth_issue'] == true;
 
-      FirebaseCrashlytics.instance.setCustomKey('map_plugin_used', 'google_maps_flutter');
-      FirebaseCrashlytics.instance.setCustomKey('ios_maps_key_present', keyPresent);
-      FirebaseCrashlytics.instance.setCustomKey('ios_maps_key_source', keySource);
-      FirebaseCrashlytics.instance.setCustomKey('ios_maps_key_length', keyLength);
-      FirebaseCrashlytics.instance.setCustomKey('ios_maps_key_prefix_only', keyPrefix);
-      FirebaseCrashlytics.instance.setCustomKey('map_sdk_initialized', sdkInitialized);
-      FirebaseCrashlytics.instance.setCustomKey('map_tiles_possible_auth_issue', possibleAuthIssue);
+      FirebaseCrashlytics.instance
+          .setCustomKey('map_plugin_used', 'google_maps_flutter');
+      FirebaseCrashlytics.instance
+          .setCustomKey('ios_maps_key_present', keyPresent);
+      FirebaseCrashlytics.instance
+          .setCustomKey('ios_maps_key_source', keySource);
+      FirebaseCrashlytics.instance
+          .setCustomKey('ios_maps_key_length', keyLength);
+      FirebaseCrashlytics.instance
+          .setCustomKey('ios_maps_key_prefix_only', keyPrefix);
+      FirebaseCrashlytics.instance
+          .setCustomKey('map_sdk_initialized', sdkInitialized);
+      FirebaseCrashlytics.instance
+          .setCustomKey('map_tiles_possible_auth_issue', possibleAuthIssue);
       FirebaseCrashlytics.instance.log(
         'ios_google_maps_diagnostics keyPresent=$keyPresent source=$keySource length=$keyLength sdkInitialized=$sdkInitialized',
       );
@@ -1067,7 +1465,8 @@ class _LiveTripMapState extends State<_LiveTripMap> {
       );
       if (!keyPresent || !sdkInitialized) {
         FirebaseCrashlytics.instance.recordError(
-          StateError('iOS Google Maps SDK is not initialized with a valid Maps SDK for iOS key. Check bundle id restrictions, API restrictions, and billing.'),
+          StateError(
+              'iOS Google Maps SDK is not initialized with a valid Maps SDK for iOS key. Check bundle id restrictions, API restrictions, and billing.'),
           StackTrace.current,
           fatal: false,
         );
@@ -1116,7 +1515,8 @@ class _LiveTripMapState extends State<_LiveTripMap> {
     );
 
     try {
-      await _controller?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 72));
+      await _controller
+          ?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 72));
     } catch (error) {
       debugPrint('[MAP INIT] fit bounds failed: $error');
       await _controller?.animateCamera(CameraUpdate.newLatLngZoom(client, 16));

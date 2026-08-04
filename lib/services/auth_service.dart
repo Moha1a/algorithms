@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'device_registration_service.dart';
@@ -423,6 +424,132 @@ class AuthService {
             'Phone verification failed because the web app verifier was rejected.',
       );
     }
+  }
+
+  String _functionsUrl(String functionName) {
+    final projectId = _auth.app.options.projectId;
+    return 'https://us-central1-$projectId.cloudfunctions.net/$functionName';
+  }
+
+  String _otpRecipient(String phoneNumber) {
+    return IraqiPhoneUtils.normalize(phoneNumber).replaceFirst('+', '');
+  }
+
+  Future<String> requestOtpCode({
+    required String phoneNumber,
+  }) async {
+    final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
+    final isLikelyE164 = RegExp(r'^\+[1-9]\d{7,14}$').hasMatch(normalizedPhone);
+    if (!isLikelyE164) {
+      throw FirebaseAuthException(
+        code: 'invalid-phone-number',
+        message: 'رقم الهاتف غير صالح.',
+      );
+    }
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse(_functionsUrl('sendOtpCode')),
+            headers: const {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({'recipient': _otpRecipient(normalizedPhone)}),
+          )
+          .timeout(const Duration(seconds: 30));
+      final data = jsonDecode(response.body.isEmpty ? '{}' : response.body)
+          as Map<String, dynamic>;
+      final id = (data['id'] ?? '').toString().trim();
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          id.isEmpty) {
+        debugPrint(
+            '[EXTERNAL OTP] send failed status=${response.statusCode} body=${response.body}');
+        throw FirebaseAuthException(
+          code: (data['code'] ?? 'otp-send-failed').toString(),
+          message: 'تعذر إرسال رمز التحقق.',
+        );
+      }
+      debugPrint('[EXTERNAL OTP] code sent idPresent=${id.isNotEmpty}');
+      return id;
+    } catch (error, stackTrace) {
+      debugPrint('[EXTERNAL OTP] request failed: $error');
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+      if (error is FirebaseAuthException) rethrow;
+      throw FirebaseAuthException(
+        code: 'otp-send-failed',
+        message: 'تعذر إرسال رمز التحقق.',
+      );
+    }
+  }
+
+  Future<void> verifyOtpCode({
+    required String phoneNumber,
+    required String verificationId,
+    required String code,
+  }) async {
+    final cleanCode = InputDigitUtils.digitsOnly(code);
+    if (cleanCode.length < 4 || verificationId.trim().isEmpty) {
+      throw FirebaseAuthException(
+        code: 'invalid-verification-code',
+        message: 'رمز التحقق غير صحيح.',
+      );
+    }
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse(_functionsUrl('verifyOtpCode')),
+            headers: const {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'recipient': _otpRecipient(phoneNumber),
+              'code': cleanCode,
+              'id': verificationId.trim(),
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+      final data = jsonDecode(response.body.isEmpty ? '{}' : response.body)
+          as Map<String, dynamic>;
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          (data['status'] ?? '').toString() != 'success') {
+        debugPrint(
+            '[EXTERNAL OTP] verify failed status=${response.statusCode} body=${response.body}');
+        throw FirebaseAuthException(
+          code: 'invalid-verification-code',
+          message: 'رمز التحقق غير صحيح.',
+        );
+      }
+      debugPrint('[EXTERNAL OTP] verified');
+    } catch (error, stackTrace) {
+      debugPrint('[EXTERNAL OTP] verify exception: $error');
+      FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
+      if (error is FirebaseAuthException) rethrow;
+      throw FirebaseAuthException(
+        code: 'invalid-verification-code',
+        message: 'رمز التحقق غير صحيح.',
+      );
+    }
+  }
+
+  Future<String> findUserUidByPhoneForPasswordReset(String phoneNumber) async {
+    final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
+    final snap = await _firestore
+        .collection('users')
+        .where('phoneNumber', isEqualTo: normalizedPhone)
+        .limit(1)
+        .get();
+    if (snap.docs.isEmpty) {
+      throw FirebaseAuthException(
+        code: 'missing-user-doc',
+        message: 'الحساب غير موجود.',
+      );
+    }
+    return (snap.docs.first.data()['uid'] ?? snap.docs.first.id).toString();
   }
 
   void _recordPhoneAuthFailure(
@@ -1026,6 +1153,7 @@ class AuthService {
     required String fullName,
     required String governorate,
     String? outletName,
+    String? outletRegion,
     required bool acceptedTerms,
     required String termsVersion,
     required List<String> acceptedTermsItems,
@@ -1207,6 +1335,8 @@ class AuthService {
 
       if (normalizedRole == 'outlet') {
         payload['outletName'] = (outletName ?? '').trim();
+        payload['region'] = (outletRegion ?? '').trim();
+        payload['outletRegion'] = (outletRegion ?? '').trim();
         payload['approvalStatus'] = 'pending';
         payload['approvalRequestedAt'] = FieldValue.serverTimestamp();
         payload['approvalDecisionAt'] = null;
@@ -1299,6 +1429,7 @@ class AuthService {
     required String fullName,
     required String governorate,
     String? outletName,
+    String? outletRegion,
     required bool acceptedTerms,
     required String termsVersion,
     required List<String> acceptedTermsItems,
@@ -1442,6 +1573,8 @@ class AuthService {
 
       if (role == 'outlet') {
         payload['outletName'] = (outletName ?? '').trim();
+        payload['region'] = (outletRegion ?? '').trim();
+        payload['outletRegion'] = (outletRegion ?? '').trim();
         payload['approvalStatus'] = 'pending';
         payload['approvalRequestedAt'] = FieldValue.serverTimestamp();
         payload['approvalDecisionAt'] = null;
@@ -2280,6 +2413,7 @@ class AuthService {
     required String fullName,
     required String governorate,
     String? outletName,
+    String? outletRegion,
   }) async {
     final normalizedPhone = IraqiPhoneUtils.normalize(phoneNumber);
     final trimmedPassword = password.trim();
@@ -2326,6 +2460,8 @@ class AuthService {
 
     if (role == 'outlet') {
       profile['outletName'] = (outletName ?? '').trim();
+      profile['region'] = (outletRegion ?? '').trim();
+      profile['outletRegion'] = (outletRegion ?? '').trim();
       profile['approvalStatus'] = 'pending';
     }
 

@@ -5,6 +5,7 @@ import {enforceSingleActiveOutletBooking} from './domain/enforce_single_active_o
 import {cleanupStaleDeviceTokensDaily} from './jobs/daily_cleanup';
 import {autoCancelStaleBookings} from './jobs/auto_cancel_bookings';
 import {sendPushNotification} from './http/send_push_notification';
+import {sendOtpCode, verifyOtpCode} from './http/otp';
 import {onNotificationJobCreated} from './jobs/on_notification_job_created';
 import {onArrivalMarkedNotifyProvider} from './domain/arrival_marked_notification';
 import {onBookingEventCreated} from './domain/events';
@@ -16,6 +17,8 @@ if (!admin.apps.length) {
 }
 
 exports.sendPushNotification = sendPushNotification;
+exports.sendOtpCode = sendOtpCode;
+exports.verifyOtpCode = verifyOtpCode;
 exports.onNotificationJobCreated = onNotificationJobCreated;
 exports.cleanupStaleDeviceTokensDaily = cleanupStaleDeviceTokensDaily;
 exports.autoCancelStaleBookings = autoCancelStaleBookings;

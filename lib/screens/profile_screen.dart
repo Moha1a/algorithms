@@ -16,10 +16,12 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late final TextEditingController _nameController;
+  late final TextEditingController _outletNameController;
+  late final TextEditingController _regionController;
+  late final TextEditingController _governorateController;
   final AuthService _authService = AuthService();
   bool _saving = false;
   bool _deleting = false;
-  static const Duration _nameChangeCooldown = Duration(days: 14);
 
   @override
   void initState() {
@@ -27,11 +29,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _nameController = TextEditingController(
       text: (widget.profile['fullName'] ?? '').toString(),
     );
+    _outletNameController = TextEditingController(
+      text: (widget.profile['outletName'] ?? '').toString(),
+    );
+    _regionController = TextEditingController(
+      text: (widget.profile['region'] ?? widget.profile['outletRegion'] ?? '')
+          .toString(),
+    );
+    _governorateController = TextEditingController(
+      text: (widget.profile['governorate'] ?? '').toString(),
+    );
   }
 
   @override
   void dispose() {
     _nameController.dispose();
+    _outletNameController.dispose();
+    _regionController.dispose();
+    _governorateController.dispose();
     super.dispose();
   }
 
@@ -42,6 +57,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final role = (widget.profile['role'] ?? '').toString();
     final governorate = (widget.profile['governorate'] ?? '').toString();
     final outletName = (widget.profile['outletName'] ?? '').toString();
+    final outletRegion =
+        (widget.profile['region'] ?? widget.profile['outletRegion'] ?? '')
+            .toString();
 
     return Scaffold(
       appBar: AppBar(title: const Text('منفذك - الملف الشخصي')),
@@ -58,6 +76,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Text('الدور: ${role == 'outlet' ? 'منفذ' : 'عميل'}'),
                   Text('المحافظة: $governorate'),
                   if (outletName.isNotEmpty) Text('اسم المنفذ: $outletName'),
+                  if (role == 'outlet' && outletRegion.isNotEmpty)
+                    Text('المنطقة: $outletRegion'),
                   const SizedBox(height: 6),
                   StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                     stream: FirebaseFirestore.instance
@@ -82,7 +102,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         return const Text('معدل التقييم: لا يوجد تقييم بعد');
                       }
                       final avg = total / count;
-                      return Text('معدل التقييم: ⭐ ${avg.toStringAsFixed(1)} ($count تقييم)');
+                      return Text(
+                          'معدل التقييم: ⭐ ${avg.toStringAsFixed(1)} ($count تقييم)');
                     },
                   ),
                 ],
@@ -90,53 +111,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _nameController,
-            decoration: const InputDecoration(labelText: 'الاسم الكامل'),
-          ),
-          const SizedBox(height: 10),
-          FilledButton(
-            onPressed: _saving
-                ? null
-                : () async {
-                    final next = _nameController.text.trim();
-                    if (next.isEmpty) return;
-                    setState(() => _saving = true);
-                    try {
-                      final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
-                      final userSnap = await userRef.get();
-                      final data = userSnap.data() ?? <String, dynamic>{};
-                      final changedAtRaw = data['nameUpdatedAt'];
-
-                      DateTime? changedAt;
-                      if (changedAtRaw is Timestamp) {
-                        changedAt = changedAtRaw.toDate();
-                      }
-
-                      if (changedAt != null) {
-                        final nextAllowed = changedAt.add(_nameChangeCooldown);
-                        final now = DateTime.now();
-                        if (now.isBefore(nextAllowed)) {
-                          final remaining = nextAllowed.difference(now).inDays + 1;
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('يمكنك تغيير الاسم مرة واحدة كل 14 يومًا. المتبقي تقريبًا $remaining يوم.')),
-                          );
-                          return;
-                        }
-                      }
-
-                      await userRef.update({
-                        'fullName': next,
-                        'nameUpdatedAt': FieldValue.serverTimestamp(),
-                      });
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث الاسم')));
-                    } finally {
-                      if (mounted) setState(() => _saving = false);
-                    }
-                  },
-            child: const Text('حفظ الاسم'),
+          FilledButton.icon(
+            onPressed: _saving ? null : () => _openEditProfileSheet(uid, role),
+            icon: const Icon(Icons.edit_rounded),
+            label: Text(_saving ? 'جاري الحفظ...' : 'تعديل الملف الشخصي'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -160,31 +138,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: _deleting
                 ? null
                 : () async {
-              final confirm = await showDialog<bool>(
-                context: context,
-                builder: (dialogContext) => AlertDialog(
-                  title: const Text('تسجيل الخروج'),
-                  content: const Text('هل أنت متأكد من تسجيل الخروج؟'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(false),
-                      child: const Text('إلغاء'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(true),
-                      child: const Text('نعم'),
-                    ),
-                  ],
-                ),
-              );
-              if (confirm != true) return;
-              await _authService.logout();
-              if (!mounted) return;
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
-                (route) => false,
-              );
-            },
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (dialogContext) => AlertDialog(
+                        title: const Text('تسجيل الخروج'),
+                        content: const Text('هل أنت متأكد من تسجيل الخروج؟'),
+                        actions: [
+                          TextButton(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(false),
+                            child: const Text('إلغاء'),
+                          ),
+                          FilledButton(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(true),
+                            child: const Text('نعم'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm != true) return;
+                    await _authService.logout();
+                    if (!mounted) return;
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                          builder: (_) => const RoleSelectionScreen()),
+                      (route) => false,
+                    );
+                  },
             icon: const Icon(Icons.logout_rounded),
             label: const Text('تسجيل الخروج'),
           ),
@@ -202,11 +183,133 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.delete_forever_rounded),
-            label: Text(_deleting ? 'جاري حذف الحساب...' : 'حذف الحساب نهائياً'),
+            label:
+                Text(_deleting ? 'جاري حذف الحساب...' : 'حذف الحساب نهائياً'),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _openEditProfileSheet(String uid, String role) async {
+    final formKey = GlobalKey<FormState>();
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 18,
+            right: 18,
+            top: 8,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 18,
+          ),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'تعديل الملف الشخصي',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(labelText: 'الاسم الكامل'),
+                  validator: (value) {
+                    if ((value ?? '').trim().isEmpty) {
+                      return 'يرجى إدخال الاسم';
+                    }
+                    return null;
+                  },
+                ),
+                if (role == 'outlet') ...[
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _outletNameController,
+                    decoration: const InputDecoration(labelText: 'اسم المنفذ'),
+                    validator: (value) {
+                      if ((value ?? '').trim().isEmpty) {
+                        return 'يرجى إدخال اسم المنفذ';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _governorateController,
+                    decoration: const InputDecoration(labelText: 'المحافظة'),
+                    validator: (value) {
+                      if ((value ?? '').trim().isEmpty) {
+                        return 'يرجى إدخال المحافظة';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _regionController,
+                    decoration: const InputDecoration(labelText: 'المنطقة'),
+                    validator: (value) {
+                      if ((value ?? '').trim().isEmpty) {
+                        return 'يرجى إدخال المنطقة';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
+                const SizedBox(height: 18),
+                FilledButton.icon(
+                  onPressed: () {
+                    if (formKey.currentState?.validate() != true) return;
+                    Navigator.pop(ctx, true);
+                  },
+                  icon: const Icon(Icons.save_rounded),
+                  label: const Text('حفظ التعديلات'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (ok != true) return;
+
+    setState(() => _saving = true);
+    try {
+      final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+      final updates = <String, dynamic>{
+        'fullName': _nameController.text.trim(),
+        'nameUpdatedAt': FieldValue.serverTimestamp(),
+        'profileUpdatedAt': FieldValue.serverTimestamp(),
+      };
+      widget.profile['fullName'] = _nameController.text.trim();
+      if (role == 'outlet') {
+        final outletName = _outletNameController.text.trim();
+        final governorate = _governorateController.text.trim();
+        final region = _regionController.text.trim();
+        updates['outletName'] = outletName;
+        updates['governorate'] = governorate;
+        updates['region'] = region;
+        updates['outletRegion'] = region;
+        widget.profile['outletName'] = outletName;
+        widget.profile['governorate'] = governorate;
+        widget.profile['region'] = region;
+        widget.profile['outletRegion'] = region;
+      }
+
+      await userRef.update(updates);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم تحديث الملف الشخصي')),
+      );
+      setState(() {});
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _confirmAndDeleteAccount() async {

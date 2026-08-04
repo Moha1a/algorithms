@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/app_version_service.dart';
@@ -63,8 +63,12 @@ class AdminDashboardScreen extends StatelessWidget {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: 'العنوان')),
-              TextField(controller: bodyCtrl, decoration: const InputDecoration(labelText: 'المحتوى')),
+              TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(labelText: 'العنوان')),
+              TextField(
+                  controller: bodyCtrl,
+                  decoration: const InputDecoration(labelText: 'المحتوى')),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('حفظ كرسالة جماعية داخل الإشعارات'),
@@ -74,8 +78,12 @@ class AdminDashboardScreen extends StatelessWidget {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('إرسال')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('إلغاء')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('إرسال')),
           ],
         ),
       ),
@@ -125,13 +133,18 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
 
   @override
   Widget build(BuildContext context) {
-    final stream = FirebaseFirestore.instance.collection('users').where('role', isEqualTo: widget.role).snapshots();
+    final stream = FirebaseFirestore.instance
+        .collection('users')
+        .where('role', isEqualTo: widget.role)
+        .snapshots();
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(12),
           child: TextField(
-            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'بحث بالاسم أو البريد'),
+            decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: 'بحث بالاسم أو البريد'),
             onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
           ),
         ),
@@ -139,7 +152,8 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
           child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: stream,
             builder: (context, snapshot) {
-              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+              if (!snapshot.hasData)
+                return const Center(child: CircularProgressIndicator());
               final docs = snapshot.data!.docs.where((d) {
                 if (_q.isEmpty) return true;
                 final u = d.data();
@@ -179,13 +193,16 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                                 builder: (_) => SupportChatScreen(
                                   threadPath: 'support_general/$uid/messages',
                                   currentUserId: 'admin',
-                                  title: 'محادثة ${widget.role == 'outlet' ? 'المنفذ' : 'العميل'}',
+                                  title:
+                                      'محادثة ${widget.role == 'outlet' ? 'المنفذ' : 'العميل'}',
                                 ),
                               ),
                             );
                           } else if (v == 'notify') {
-                            final titleCtrl = TextEditingController(text: 'رسالة من الإدارة');
-                            final bodyCtrl = TextEditingController(text: 'يرجى مراجعة حسابك من خلال التطبيق.');
+                            final titleCtrl =
+                                TextEditingController(text: 'رسالة من الإدارة');
+                            final bodyCtrl = TextEditingController(
+                                text: 'يرجى مراجعة حسابك من خلال التطبيق.');
                             final ok = await showDialog<bool>(
                               context: context,
                               builder: (ctx) => AlertDialog(
@@ -193,18 +210,30 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                                 content: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: 'العنوان')),
-                                    TextField(controller: bodyCtrl, decoration: const InputDecoration(labelText: 'المحتوى')),
+                                    TextField(
+                                        controller: titleCtrl,
+                                        decoration: const InputDecoration(
+                                            labelText: 'العنوان')),
+                                    TextField(
+                                        controller: bodyCtrl,
+                                        decoration: const InputDecoration(
+                                            labelText: 'المحتوى')),
                                   ],
                                 ),
                                 actions: [
-                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
-                                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('إرسال')),
+                                  TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
+                                      child: const Text('إلغاء')),
+                                  FilledButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: const Text('إرسال')),
                                 ],
                               ),
                             );
                             if (ok == true) {
-                              debugPrint('[AdminNotify] single push to uid=$uid');
+                              debugPrint(
+                                  '[AdminNotify] single push to uid=$uid');
                               await PushSenderService.instance.sendPush(
                                 recipientUid: uid,
                                 title: titleCtrl.text.trim(),
@@ -212,7 +241,9 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                                 type: 'admin_single',
                                 actorId: 'admin',
                               );
-                              await FirebaseFirestore.instance.collection('notifications').add({
+                              await FirebaseFirestore.instance
+                                  .collection('notifications')
+                                  .add({
                                 'toUserId': uid,
                                 'type': 'admin_single',
                                 'title': titleCtrl.text.trim(),
@@ -221,35 +252,59 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                                 'createdAt': FieldValue.serverTimestamp(),
                               });
                             }
+                          } else if (v == 'set_outlet_location') {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => _OutletLocationPickerScreen(
+                                  uid: uid,
+                                  userData: u,
+                                ),
+                              ),
+                            );
                           } else if (v == 'remove') {
-                            await FirebaseFirestore.instance.collection('users').doc(uid).set({
+                            await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(uid)
+                                .set({
                               'isBlocked': true,
                             }, SetOptions(merge: true));
                           } else if (v == 'approve_outlet') {
-                            await FirebaseFirestore.instance.collection('users').doc(uid).set({
+                            await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(uid)
+                                .set({
                               'approvalStatus': 'approved',
-                              'approvalDecisionAt': FieldValue.serverTimestamp(),
+                              'approvalDecisionAt':
+                                  FieldValue.serverTimestamp(),
                               'approvedBy': 'admin',
                             }, SetOptions(merge: true));
                             await PushSenderService.instance.sendPush(
                               recipientUid: uid,
                               title: 'تم قبول طلبك ✅',
-                              body: 'تمت الموافقة على حساب المنفذ الخاص بك ويمكنك تسجيل الدخول الآن.',
+                              body:
+                                  'تمت الموافقة على حساب المنفذ الخاص بك ويمكنك تسجيل الدخول الآن.',
                               type: 'outlet_approval_accepted',
                               actorId: 'admin',
                             );
-                            await FirebaseFirestore.instance.collection('notifications').add({
+                            await FirebaseFirestore.instance
+                                .collection('notifications')
+                                .add({
                               'toUserId': uid,
                               'type': 'outlet_approval_accepted',
                               'title': 'تم قبول طلبك ✅',
-                              'body': 'تمت الموافقة على حساب المنفذ الخاص بك ويمكنك تسجيل الدخول الآن.',
+                              'body':
+                                  'تمت الموافقة على حساب المنفذ الخاص بك ويمكنك تسجيل الدخول الآن.',
                               'isRead': false,
                               'createdAt': FieldValue.serverTimestamp(),
                             });
                           } else if (v == 'reject_outlet') {
-                            await FirebaseFirestore.instance.collection('users').doc(uid).set({
+                            await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(uid)
+                                .set({
                               'approvalStatus': 'rejected',
-                              'approvalDecisionAt': FieldValue.serverTimestamp(),
+                              'approvalDecisionAt':
+                                  FieldValue.serverTimestamp(),
                               'approvedBy': 'admin',
                             }, SetOptions(merge: true));
                             await PushSenderService.instance.sendPush(
@@ -259,24 +314,38 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                               type: 'outlet_approval_rejected',
                               actorId: 'admin',
                             );
-                            await FirebaseFirestore.instance.collection('notifications').add({
+                            await FirebaseFirestore.instance
+                                .collection('notifications')
+                                .add({
                               'toUserId': uid,
                               'type': 'outlet_approval_rejected',
                               'title': 'تم رفض طلب المنفذ',
-                              'body': 'يرجى التواصل مع الإدارة لمعرفة التفاصيل.',
+                              'body':
+                                  'يرجى التواصل مع الإدارة لمعرفة التفاصيل.',
                               'isRead': false,
                               'createdAt': FieldValue.serverTimestamp(),
                             });
                           }
                         },
                         itemBuilder: (_) => [
-                          const PopupMenuItem(value: 'chat', child: Text('مراسلة')),
-                          const PopupMenuItem(value: 'notify', child: Text('إرسال إشعار')),
+                          const PopupMenuItem(
+                              value: 'chat', child: Text('مراسلة')),
+                          const PopupMenuItem(
+                              value: 'notify', child: Text('إرسال إشعار')),
+                          if (isOutletRole)
+                            const PopupMenuItem(
+                                value: 'set_outlet_location',
+                                child: Text('تحديد موقع/منطقة المنفذ')),
                           if (isOutletRole && approvalStatus == 'pending')
-                            const PopupMenuItem(value: 'approve_outlet', child: Text('قبول طلب المنفذ')),
+                            const PopupMenuItem(
+                                value: 'approve_outlet',
+                                child: Text('قبول طلب المنفذ')),
                           if (isOutletRole && approvalStatus == 'pending')
-                            const PopupMenuItem(value: 'reject_outlet', child: Text('رفض طلب المنفذ')),
-                          const PopupMenuItem(value: 'remove', child: Text('حظر المستخدم')),
+                            const PopupMenuItem(
+                                value: 'reject_outlet',
+                                child: Text('رفض طلب المنفذ')),
+                          const PopupMenuItem(
+                              value: 'remove', child: Text('حظر المستخدم')),
                         ],
                       ),
                     ),
@@ -287,6 +356,139 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _OutletLocationPickerScreen extends StatefulWidget {
+  const _OutletLocationPickerScreen({
+    required this.uid,
+    required this.userData,
+  });
+
+  final String uid;
+  final Map<String, dynamic> userData;
+
+  @override
+  State<_OutletLocationPickerScreen> createState() =>
+      _OutletLocationPickerScreenState();
+}
+
+class _OutletLocationPickerScreenState
+    extends State<_OutletLocationPickerScreen> {
+  late LatLng _selected = LatLng(
+    _toDouble(widget.userData['fixedLat'] ??
+            widget.userData['currentLat'] ??
+            widget.userData['lat']) ??
+        33.3152,
+    _toDouble(widget.userData['fixedLng'] ??
+            widget.userData['currentLng'] ??
+            widget.userData['lng']) ??
+        44.3661,
+  );
+  late final TextEditingController _regionController = TextEditingController(
+    text: (widget.userData['region'] ??
+            widget.userData['outletRegion'] ??
+            widget.userData['governorate'] ??
+            '')
+        .toString(),
+  );
+  bool _saving = false;
+
+  static double? _toDouble(Object? value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse((value ?? '').toString());
+  }
+
+  @override
+  void dispose() {
+    _regionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_regionController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('أدخل المنطقة قبل الحفظ.')),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    await FirebaseFirestore.instance.collection('users').doc(widget.uid).set({
+      'fixedLat': _selected.latitude,
+      'fixedLng': _selected.longitude,
+      'lat': _selected.latitude,
+      'lng': _selected.longitude,
+      'region': _regionController.text.trim(),
+      'outletRegion': _regionController.text.trim(),
+      'fixedLocationUpdatedAt': FieldValue.serverTimestamp(),
+      'fixedLocationUpdatedBy':
+          FirebaseAuth.instance.currentUser?.uid ?? 'admin',
+    }, SetOptions(merge: true));
+    if (!mounted) return;
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم تثبيت موقع ومنطقة المنفذ.')),
+    );
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('تحديد موقع المنفذ')),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: TextField(
+              controller: _regionController,
+              decoration: const InputDecoration(
+                labelText: 'المنطقة',
+                prefixIcon: Icon(Icons.location_city_rounded),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GoogleMap(
+              initialCameraPosition:
+                  CameraPosition(target: _selected, zoom: 13),
+              markers: {
+                Marker(
+                  markerId: const MarkerId('outlet_fixed_location'),
+                  position: _selected,
+                  draggable: true,
+                  infoWindow: const InfoWindow(title: 'موقع المنفذ'),
+                  onDragEnd: (value) => setState(() => _selected = value),
+                ),
+              },
+              onTap: (value) => setState(() => _selected = value),
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: true,
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: SizedBox(
+                height: 50,
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _saving ? null : _save,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.save_rounded),
+                  label: const Text('حفظ الموقع والمنطقة'),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -303,13 +505,16 @@ class _TripsAdminTabState extends State<_TripsAdminTab> {
 
   @override
   Widget build(BuildContext context) {
-    final stream = FirebaseFirestore.instance.collection('bookings').snapshots();
+    final stream =
+        FirebaseFirestore.instance.collection('bookings').snapshots();
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(12),
           child: TextField(
-            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'بحث برقم الطلب أو النوع أو الحالة'),
+            decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: 'بحث برقم الطلب أو النوع أو الحالة'),
             onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
           ),
         ),
@@ -317,13 +522,23 @@ class _TripsAdminTabState extends State<_TripsAdminTab> {
           child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: stream,
             builder: (context, snapshot) {
-              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+              if (!snapshot.hasData)
+                return const Center(child: CircularProgressIndicator());
               final docs = snapshot.data!.docs.where((d) {
                 if (_q.isEmpty) return true;
                 final data = d.data();
-                return (data['bookingId'] ?? d.id).toString().toLowerCase().contains(_q) ||
-                    (data['type'] ?? '').toString().toLowerCase().contains(_q) ||
-                    (data['status'] ?? '').toString().toLowerCase().contains(_q);
+                return (data['bookingId'] ?? d.id)
+                        .toString()
+                        .toLowerCase()
+                        .contains(_q) ||
+                    (data['type'] ?? '')
+                        .toString()
+                        .toLowerCase()
+                        .contains(_q) ||
+                    (data['status'] ?? '')
+                        .toString()
+                        .toLowerCase()
+                        .contains(_q);
               }).toList();
               return ListView.builder(
                 padding: const EdgeInsets.all(12),
@@ -334,11 +549,15 @@ class _TripsAdminTabState extends State<_TripsAdminTab> {
                   return Card(
                     child: ListTile(
                       title: Text('طلب ${(d['bookingId'] ?? id).toString()}'),
-                      subtitle: Text('الحالة: ${(d['status'] ?? '').toString()} • النوع: ${(d['type'] ?? '').toString()}'),
+                      subtitle: Text(
+                          'الحالة: ${(d['status'] ?? '').toString()} • النوع: ${(d['type'] ?? '').toString()}'),
                       trailing: PopupMenuButton<String>(
                         onSelected: (v) async {
                           if (v == 'cancel') {
-                            await FirebaseFirestore.instance.collection('bookings').doc(id).update({'status': 'cancelled'});
+                            await FirebaseFirestore.instance
+                                .collection('bookings')
+                                .doc(id)
+                                .update({'status': 'cancelled'});
                           }
                           if (v == 'chat_client') {
                             final cid = (d['clientId'] ?? '').toString();
@@ -366,9 +585,14 @@ class _TripsAdminTabState extends State<_TripsAdminTab> {
                           }
                         },
                         itemBuilder: (_) => const [
-                          PopupMenuItem(value: 'cancel', child: Text('إلغاء الطلب')),
-                          PopupMenuItem(value: 'chat_client', child: Text('مراسلة العميل')),
-                          PopupMenuItem(value: 'chat_outlet', child: Text('مراسلة المنفذ')),
+                          PopupMenuItem(
+                              value: 'cancel', child: Text('إلغاء الطلب')),
+                          PopupMenuItem(
+                              value: 'chat_client',
+                              child: Text('مراسلة العميل')),
+                          PopupMenuItem(
+                              value: 'chat_outlet',
+                              child: Text('مراسلة المنفذ')),
                         ],
                       ),
                     ),
@@ -395,14 +619,18 @@ class _ChatsAdminTabState extends State<_ChatsAdminTab> {
 
   @override
   Widget build(BuildContext context) {
-    final stream = FirebaseFirestore.instance.collection('admin_inbox').orderBy('updatedAt', descending: true).snapshots();
+    final stream = FirebaseFirestore.instance
+        .collection('admin_inbox')
+        .orderBy('updatedAt', descending: true)
+        .snapshots();
 
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(12),
           child: TextField(
-            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'بحث في المحادثات'),
+            decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search), hintText: 'بحث في المحادثات'),
             onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
           ),
         ),
@@ -416,8 +644,14 @@ class _ChatsAdminTabState extends State<_ChatsAdminTab> {
               final now = DateTime.now();
               final docs = (snapshot.data?.docs ?? const []).where((d) {
                 if (_q.isEmpty) return true;
-                return (d.data()['title'] ?? '').toString().toLowerCase().contains(_q) ||
-                    (d.data()['lastMessage'] ?? '').toString().toLowerCase().contains(_q);
+                return (d.data()['title'] ?? '')
+                        .toString()
+                        .toLowerCase()
+                        .contains(_q) ||
+                    (d.data()['lastMessage'] ?? '')
+                        .toString()
+                        .toLowerCase()
+                        .contains(_q);
               }).toList();
 
               final active = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
@@ -425,7 +659,9 @@ class _ChatsAdminTabState extends State<_ChatsAdminTab> {
 
               for (final d in docs) {
                 final ts = d.data()['updatedAt'];
-                final at = ts is Timestamp ? ts.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
+                final at = ts is Timestamp
+                    ? ts.toDate()
+                    : DateTime.fromMillisecondsSinceEpoch(0);
                 final diff = now.difference(at).inMinutes;
                 if (diff <= 10) {
                   active.add(d);
@@ -441,10 +677,12 @@ class _ChatsAdminTabState extends State<_ChatsAdminTab> {
               return ListView(
                 padding: const EdgeInsets.all(12),
                 children: [
-                  const Text('المحادثات النشطة', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('المحادثات النشطة',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   ...active.map((d) => _chatTile(context, d)),
                   const SizedBox(height: 12),
-                  const Text('المحادثات السابقة', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('المحادثات السابقة',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   ...previous.map((d) => _chatTile(context, d)),
                 ],
               );
@@ -455,7 +693,8 @@ class _ChatsAdminTabState extends State<_ChatsAdminTab> {
     );
   }
 
-  Widget _chatTile(BuildContext context, QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+  Widget _chatTile(
+      BuildContext context, QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data();
     final threadPath = (d['threadPath'] ?? '').toString();
     final title = (d['title'] ?? 'محادثة').toString();
@@ -527,17 +766,22 @@ class _VersionPolicyAdminTabState extends State<_VersionPolicyAdminTab> {
       final packageInfo = await PackageInfo.fromPlatform();
       _currentVersion = packageInfo.version.trim();
       _currentBuild = int.tryParse(packageInfo.buildNumber.trim()) ?? 0;
-      final doc = await FirebaseFirestore.instance.doc(AppVersionService.policyPath).get();
+      final doc = await FirebaseFirestore.instance
+          .doc(AppVersionService.policyPath)
+          .get();
       final data = doc.data() ?? <String, dynamic>{};
       _enabled = data['enabled'] != false;
       _iosMinVersionCtrl.text = (data['iosMinVersion'] ?? '').toString();
       _iosMinBuildCtrl.text = _intText(data['iosMinBuild']);
-      _androidMinVersionCtrl.text = (data['androidMinVersion'] ?? '').toString();
+      _androidMinVersionCtrl.text =
+          (data['androidMinVersion'] ?? '').toString();
       _androidMinBuildCtrl.text = _intText(data['androidMinBuild']);
       _iosStoreUrlCtrl.text = (data['iosStoreUrl'] ?? '').toString();
       _androidStoreUrlCtrl.text = (data['androidStoreUrl'] ?? '').toString();
       _titleCtrl.text = (data['title'] ?? 'تحديث ضروري للتطبيق').toString();
-      _messageCtrl.text = (data['message'] ?? 'حتى تستمر باستخدام منفذك بأمان، يرجى تحديث التطبيق إلى آخر نسخة متوفرة.').toString();
+      _messageCtrl.text = (data['message'] ??
+              'حتى تستمر باستخدام منفذك بأمان، يرجى تحديث التطبيق إلى آخر نسخة متوفرة.')
+          .toString();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -551,13 +795,22 @@ class _VersionPolicyAdminTabState extends State<_VersionPolicyAdminTab> {
 
   Future<void> _savePolicy() async {
     final iosMinVersion = _normalizeVersionText(_iosMinVersionCtrl.text);
-    final androidMinVersion = _normalizeVersionText(_androidMinVersionCtrl.text);
-    final iosMinBuild = int.tryParse(InputDigitUtils.digitsOnly(_iosMinBuildCtrl.text)) ?? 0;
-    final androidMinBuild = int.tryParse(InputDigitUtils.digitsOnly(_androidMinBuildCtrl.text)) ?? 0;
+    final androidMinVersion =
+        _normalizeVersionText(_androidMinVersionCtrl.text);
+    final iosMinBuild =
+        int.tryParse(InputDigitUtils.digitsOnly(_iosMinBuildCtrl.text)) ?? 0;
+    final androidMinBuild =
+        int.tryParse(InputDigitUtils.digitsOnly(_androidMinBuildCtrl.text)) ??
+            0;
 
-    if (_enabled && iosMinVersion.isEmpty && iosMinBuild <= 0 && androidMinVersion.isEmpty && androidMinBuild <= 0) {
+    if (_enabled &&
+        iosMinVersion.isEmpty &&
+        iosMinBuild <= 0 &&
+        androidMinVersion.isEmpty &&
+        androidMinBuild <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('حدد أقل نسخة أو أقل رقم بناء قبل تفعيل الحظر.')),
+        const SnackBar(
+            content: Text('حدد أقل نسخة أو أقل رقم بناء قبل تفعيل الحظر.')),
       );
       return;
     }
@@ -572,7 +825,9 @@ class _VersionPolicyAdminTabState extends State<_VersionPolicyAdminTab> {
         'androidMinBuild': androidMinBuild,
         'iosStoreUrl': _iosStoreUrlCtrl.text.trim(),
         'androidStoreUrl': _androidStoreUrlCtrl.text.trim(),
-        'title': _titleCtrl.text.trim().isEmpty ? 'تحديث ضروري للتطبيق' : _titleCtrl.text.trim(),
+        'title': _titleCtrl.text.trim().isEmpty
+            ? 'تحديث ضروري للتطبيق'
+            : _titleCtrl.text.trim(),
         'message': _messageCtrl.text.trim().isEmpty
             ? 'حتى تستمر باستخدام منفذك بأمان، يرجى تحديث التطبيق إلى آخر نسخة متوفرة.'
             : _messageCtrl.text.trim(),
@@ -594,10 +849,14 @@ class _VersionPolicyAdminTabState extends State<_VersionPolicyAdminTab> {
   }
 
   void _fillCurrentVersionAsMinimum() {
-    _iosMinVersionCtrl.text = _currentVersion.isEmpty ? '1.0.2' : _currentVersion;
-    _iosMinBuildCtrl.text = _currentBuild <= 0 ? '22' : _currentBuild.toString();
-    _androidMinVersionCtrl.text = _currentVersion.isEmpty ? '1.0.2' : _currentVersion;
-    _androidMinBuildCtrl.text = _currentBuild <= 0 ? '22' : _currentBuild.toString();
+    _iosMinVersionCtrl.text =
+        _currentVersion.isEmpty ? '1.0.2' : _currentVersion;
+    _iosMinBuildCtrl.text =
+        _currentBuild <= 0 ? '22' : _currentBuild.toString();
+    _androidMinVersionCtrl.text =
+        _currentVersion.isEmpty ? '1.0.2' : _currentVersion;
+    _androidMinBuildCtrl.text =
+        _currentBuild <= 0 ? '22' : _currentBuild.toString();
     setState(() {});
   }
 
@@ -611,7 +870,8 @@ class _VersionPolicyAdminTabState extends State<_VersionPolicyAdminTab> {
 
   String _intText(Object? value) {
     if (value == null) return '';
-    final number = value is num ? value.toInt() : int.tryParse(value.toString()) ?? 0;
+    final number =
+        value is num ? value.toInt() : int.tryParse(value.toString()) ?? 0;
     return number <= 0 ? '' : number.toString();
   }
 
@@ -632,10 +892,14 @@ class _VersionPolicyAdminTabState extends State<_VersionPolicyAdminTab> {
               children: [
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('تفعيل منع النسخ القديمة', style: TextStyle(fontWeight: FontWeight.w900)),
-                  subtitle: const Text('عند التفعيل، أي نسخة أقل من الحد الأدنى ستظهر لها شاشة تحديث إجبارية.'),
+                  title: const Text('تفعيل منع النسخ القديمة',
+                      style: TextStyle(fontWeight: FontWeight.w900)),
+                  subtitle: const Text(
+                      'عند التفعيل، أي نسخة أقل من الحد الأدنى ستظهر لها شاشة تحديث إجبارية.'),
                   value: _enabled,
-                  onChanged: _saving ? null : (value) => setState(() => _enabled = value),
+                  onChanged: _saving
+                      ? null
+                      : (value) => setState(() => _enabled = value),
                 ),
                 const SizedBox(height: 8),
                 FilledButton.tonalIcon(
@@ -667,7 +931,8 @@ class _VersionPolicyAdminTabState extends State<_VersionPolicyAdminTab> {
           minVersionController: _androidMinVersionCtrl,
           minBuildController: _androidMinBuildCtrl,
           storeUrlController: _androidStoreUrlCtrl,
-          storeHint: 'https://play.google.com/store/apps/details?id=com.company.manfathak',
+          storeHint:
+              'https://play.google.com/store/apps/details?id=com.company.manfathak',
         ),
         const SizedBox(height: 12),
         Card(
@@ -676,7 +941,9 @@ class _VersionPolicyAdminTabState extends State<_VersionPolicyAdminTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('نص شاشة التحديث', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                const Text('نص شاشة التحديث',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _titleCtrl,
@@ -701,15 +968,21 @@ class _VersionPolicyAdminTabState extends State<_VersionPolicyAdminTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: const [
-                Text('ملاحظة مهمة', style: TextStyle(fontWeight: FontWeight.w900)),
+                Text('ملاحظة مهمة',
+                    style: TextStyle(fontWeight: FontWeight.w900)),
                 SizedBox(height: 6),
-                Text('هذا التحكم يعمل فقط على النسخ التي تحتوي ميزة فحص النسخة. إذا كان تطبيق الآيفون المثبت أقدم من هذه الميزة فلن يتأثر إلا بعد نشر تحديث يحتويها.'),
+                Text(
+                    'هذا التحكم يعمل فقط على النسخ التي تحتوي ميزة فحص النسخة. إذا كان تطبيق الآيفون المثبت أقدم من هذه الميزة فلن يتأثر إلا بعد نشر تحديث يحتويها.'),
                 SizedBox(height: 12),
-                Text('طريقة التجربة بدون نشر تحديث', style: TextStyle(fontWeight: FontWeight.w900)),
+                Text('طريقة التجربة بدون نشر تحديث',
+                    style: TextStyle(fontWeight: FontWeight.w900)),
                 SizedBox(height: 6),
-                Text('1. ارفع الحد الأدنى مؤقتاً إلى نسخة أعلى من نسختك الحالية، مثل 9.9.9.'),
-                Text('2. أغلق التطبيق وافتحه من جديد، ستظهر شاشة التحديث الإجبارية.'),
-                Text('3. ارجع من Firebase Console أو من جهاز أدمن آخر وخفض الحد إلى نسخة التطبيق الحالية، ثم اضغط إعادة الفحص.'),
+                Text(
+                    '1. ارفع الحد الأدنى مؤقتاً إلى نسخة أعلى من نسختك الحالية، مثل 9.9.9.'),
+                Text(
+                    '2. أغلق التطبيق وافتحه من جديد، ستظهر شاشة التحديث الإجبارية.'),
+                Text(
+                    '3. ارجع من Firebase Console أو من جهاز أدمن آخر وخفض الحد إلى نسخة التطبيق الحالية، ثم اضغط إعادة الفحص.'),
               ],
             ),
           ),
@@ -720,7 +993,10 @@ class _VersionPolicyAdminTabState extends State<_VersionPolicyAdminTab> {
           child: FilledButton.icon(
             onPressed: _saving ? null : _savePolicy,
             icon: _saving
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.save_rounded),
             label: Text(_saving ? 'جاري الحفظ...' : 'حفظ سياسة النسخة'),
           ),
@@ -759,7 +1035,9 @@ class _PlatformVersionCard extends StatelessWidget {
               children: [
                 Icon(icon),
                 const SizedBox(width: 8),
-                Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w900)),
               ],
             ),
             const SizedBox(height: 12),

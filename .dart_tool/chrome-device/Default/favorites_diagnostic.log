@@ -1,0 +1,51 @@
+2026-08-03 21:15:25.173: [INFO] CurrentProfilePath: D:\Temp\flutter_tools.d8a97fcc\flutter_tools_chrome_device.96f0d917\Default
+2026-08-03 21:15:25.174: [INFO] Profiles total count: 1
+2026-08-03 21:15:25.174: [INFO] Profile: name=ملف التعريف 1 path=D:\Temp\flutter_tools.d8a97fcc\flutter_tools_chrome_device.96f0d917\Default lastActive=null
+2026-08-03 21:15:25.174: [INFO] LastUsedProfileDir: D:\Temp\flutter_tools.d8a97fcc\flutter_tools_chrome_device.96f0d917\Default
+2026-08-03 21:15:25.174: [INFO] VisibilityChanged: 0
+2026-08-03 21:15:25.257: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-08-03 21:15:25.261: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-08-03 21:15:25.264: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-08-03 21:15:25.267: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-08-03 21:15:25.269: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-08-03 21:15:25.271: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-08-03 21:15:25.274: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-08-03 21:15:25.276: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-08-03 21:15:25.280: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-08-03 21:15:25.282: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-08-03 21:15:25.315: [INFO] OnDoneLoading sync enabled: 0
+2026-08-03 21:15:25.315: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-03 21:15:25.315: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-03 21:15:25.315: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-03 21:15:25.324: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-08-03 21:15:27.981: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-08-03 21:15:27.989: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-08-03 21:15:27.994: [INFO] Primary account changed.
+2026-08-03 21:15:27.994: [INFO] OnPrimaryAccountChanged PrimaryAccountChangeEvent::Type::kSet
+2026-08-03 21:15:28.006: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-08-03 21:15:32.741: [INFO] Sync initialization duration: 4392ms
+2026-08-03 21:17:46.806: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-03 22:55:41.700: [INFO] CurrentProfilePath: D:\Temp\flutter_tools.e75308d7\flutter_tools_chrome_device.5eb5bf16\Default
+2026-08-03 22:55:41.700: [INFO] Profiles total count: 1
+2026-08-03 22:55:41.700: [INFO] Profile: name=ملف التعريف 1 path=D:\Temp\flutter_tools.e75308d7\flutter_tools_chrome_device.5eb5bf16\Default lastActive=null
+2026-08-03 22:55:41.700: [INFO] LastUsedProfileDir: D:\Temp\flutter_tools.e75308d7\flutter_tools_chrome_device.5eb5bf16\Default
+2026-08-03 22:55:41.700: [INFO] VisibilityChanged: 0
+2026-08-03 22:55:41.742: [INFO] OnDoneLoading sync enabled: 1
+2026-08-03 22:55:41.742: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-03 22:55:41.742: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-03 22:55:41.742: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-03 22:55:53.890: [INFO] Sync initialization duration: 2955ms
+2026-08-03 23:32:24.510: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-03 23:52:32.641: [INFO] CurrentProfilePath: D:\Temp\flutter_tools.b247fc5c\flutter_tools_chrome_device.529edd2c\Default
+2026-08-03 23:52:32.641: [INFO] Profiles total count: 1
+2026-08-03 23:52:32.641: [INFO] Profile: name=ملف التعريف 1 path=D:\Temp\flutter_tools.b247fc5c\flutter_tools_chrome_device.529edd2c\Default lastActive=null
+2026-08-03 23:52:32.641: [INFO] LastUsedProfileDir: D:\Temp\flutter_tools.b247fc5c\flutter_tools_chrome_device.529edd2c\Default
+2026-08-03 23:52:32.641: [INFO] VisibilityChanged: 0
+2026-08-03 23:52:32.729: [INFO] OnDoneLoading sync enabled: 0
+2026-08-03 23:52:32.729: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-08-03 23:52:32.729: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-08-03 23:52:32.729: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-08-03 23:52:35.314: [INFO] Primary account changed.
+2026-08-03 23:52:35.314: [INFO] OnPrimaryAccountChanged PrimaryAccountChangeEvent::Type::kSet
+2026-08-03 23:52:39.360: [INFO] Sync initialization duration: 6629ms
+2026-08-03 23:55:54.264: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1

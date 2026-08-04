@@ -41,12 +41,12 @@ class PushNotificationsService {
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings();
 
-await _local.initialize(
-  settings: const InitializationSettings(
-    android: androidSettings,
-    iOS: iosSettings,
-  ),
-);
+    await _local.initialize(
+      settings: const InitializationSettings(
+        android: androidSettings,
+        iOS: iosSettings,
+      ),
+    );
 
     const channel = AndroidNotificationChannel(
       highImportanceChannelId,
@@ -105,23 +105,23 @@ await _local.initialize(
       return;
     }
 
-await _local.show(
-  id: dedupeId.hashCode & 0x7fffffff,
-  title: title,
-  body: body,
-  notificationDetails: const NotificationDetails(
-    android: AndroidNotificationDetails(
-      highImportanceChannelId,
-      _channelName,
-      channelDescription: _channelDescription,
-      importance: Importance.max,
-      priority: Priority.high,
-      playSound: true,
-    ),
-    iOS: DarwinNotificationDetails(),
-  ),
-  payload: jsonEncode(data),
-);
+    await _local.show(
+      id: dedupeId.hashCode & 0x7fffffff,
+      title: title,
+      body: body,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          highImportanceChannelId,
+          _channelName,
+          channelDescription: _channelDescription,
+          importance: Importance.max,
+          priority: Priority.high,
+          playSound: true,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+      payload: jsonEncode(data),
+    );
   }
 
   Future<void> initialize(GlobalKey<NavigatorState> navigatorKey) async {
@@ -137,16 +137,16 @@ await _local.show(
       await ensureLocalNotificationsInitialized();
 
       if (!kIsWeb) {
-await _local.initialize(
-  settings: const InitializationSettings(
-    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    iOS: DarwinInitializationSettings(),
-  ),
-  onDidReceiveNotificationResponse: (NotificationResponse response) {
-    final payload = _decodePayload(response.payload);
-    _routeByPayload(payload, navigatorKey);
-  },
-);
+        await _local.initialize(
+          settings: const InitializationSettings(
+            android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+            iOS: DarwinInitializationSettings(),
+          ),
+          onDidReceiveNotificationResponse: (NotificationResponse response) {
+            final payload = _decodePayload(response.payload);
+            _routeByPayload(payload, navigatorKey);
+          },
+        );
       }
 
       await _requestPermissions();
@@ -381,7 +381,7 @@ await _local.initialize(
     final profile = userSnap.data();
     if (profile == null) return;
     final role = (profile['role'] ?? '').toString();
-    final mapIndex = role == 'outlet' ? 3 : 1;
+    final mapIndex = role == 'outlet' ? 4 : 2;
     nav.pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) =>

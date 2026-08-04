@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
@@ -16,35 +15,33 @@ class OtpVerificationScreen extends StatefulWidget {
     required this.authService,
     required this.phoneNumber,
     required this.initialVerificationId,
-    required this.initialResendToken,
     this.role = 'client',
     this.isRegistration = false,
     this.fullName = '',
     this.governorate = 'البصرة',
     this.password = '',
     this.outletName,
+    this.outletRegion = '',
     this.acceptedTerms = false,
     this.termsVersion = '',
     this.acceptedTermsItems = const [],
     this.isPasswordResetFlow = false,
-    this.webConfirmationResult,
   });
 
   final AuthService authService;
   final String phoneNumber;
   final String initialVerificationId;
-  final int? initialResendToken;
   final String role;
   final bool isRegistration;
   final String fullName;
   final String governorate;
   final String password;
   final String? outletName;
+  final String outletRegion;
   final bool acceptedTerms;
   final String termsVersion;
   final List<String> acceptedTermsItems;
   final bool isPasswordResetFlow;
-  final ConfirmationResult? webConfirmationResult;
 
   @override
   State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
@@ -57,14 +54,12 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       TextEditingController();
 
   String _verificationId = '';
-  int? _resendToken;
   bool _isLoading = false;
   bool _canResend = false;
   bool _newPasswordVisible = false;
   bool _confirmPasswordVisible = false;
   int _secondsLeft = 60;
   Timer? _timer;
-  ConfirmationResult? _webConfirmationResult;
   String? _verifiedUid;
   DateTime? _verifiedAt;
   static const Duration _passwordResetWindow = Duration(minutes: 10);
@@ -73,8 +68,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   void initState() {
     super.initState();
     _verificationId = widget.initialVerificationId;
-    _resendToken = widget.initialResendToken;
-    _webConfirmationResult = widget.webConfirmationResult;
     _startCountdown();
   }
 
@@ -125,56 +118,26 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
     setState(() => _isLoading = true);
     try {
-      if (kIsWeb && _webConfirmationResult != null) {
-        debugPrint('[OTP FLOW] web confirmationResult confirm');
-        final userCred = await _webConfirmationResult!.confirm(code);
-        if (widget.isPasswordResetFlow) {
-          if (!mounted) return;
-          setState(() {
-            _verifiedUid = userCred.user?.uid;
-            _verifiedAt = DateTime.now();
-          });
-          _showMessage('تم التحقق من الرمز. أدخل كلمة المرور الجديدة');
-          return;
-        }
-
-        final profile =
-            await widget.authService.loginOrRegisterWebWithPhonePassword(
-          role: widget.role,
-          phoneNumber: widget.phoneNumber,
-          password: widget.password,
-          isRegistration: widget.isRegistration,
-          fullName: widget.fullName,
-          governorate: widget.governorate,
-          outletName: widget.outletName,
-          acceptedTerms: widget.acceptedTerms,
-          termsVersion: widget.termsVersion,
-          acceptedTermsItems: widget.acceptedTermsItems,
-        );
-        await _openProfile(profile);
-        return;
-      }
-
-      debugPrint('[OTP FLOW] create credential');
-      final credential = PhoneAuthProvider.credential(
+      await widget.authService.verifyOtpCode(
+        phoneNumber: widget.phoneNumber,
         verificationId: _verificationId,
-        smsCode: code,
+        code: code,
       );
-
       if (widget.isPasswordResetFlow) {
-        final userCred =
-            await FirebaseAuth.instance.signInWithCredential(credential);
+        final uid = await widget.authService.findUserUidByPhoneForPasswordReset(
+          widget.phoneNumber,
+        );
         if (!mounted) return;
         setState(() {
-          _verifiedUid = userCred.user?.uid;
+          _verifiedUid = uid;
           _verifiedAt = DateTime.now();
         });
         _showMessage('تم التحقق من الرمز. أدخل كلمة المرور الجديدة');
         return;
       }
 
-      final profile = await widget.authService.loginOrRegisterWithCredential(
-        credential: credential,
+      final profile =
+          await widget.authService.loginOrRegisterWebWithPhonePassword(
         role: widget.role,
         phoneNumber: widget.phoneNumber,
         password: widget.password,
@@ -182,6 +145,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         fullName: widget.fullName,
         governorate: widget.governorate,
         outletName: widget.outletName,
+        outletRegion: widget.outletRegion,
         acceptedTerms: widget.acceptedTerms,
         termsVersion: widget.termsVersion,
         acceptedTermsItems: widget.acceptedTermsItems,
@@ -243,7 +207,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         DateTime.now().difference(verifiedAt) > _passwordResetWindow) {
       _showMessage('انتهت مهلة التحقق. يرجى إعادة إرسال رمز التحقق.');
       setState(() {
-        _webConfirmationResult = null;
         _verifiedUid = null;
         _verifiedAt = null;
       });
@@ -279,42 +242,16 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     if (!_canResend || _isLoading) return;
     setState(() => _isLoading = true);
     try {
-      if (kIsWeb) {
-        final webSession =
-            await widget.authService.sendWebPhoneVerificationCode(
-          phoneNumber: widget.phoneNumber,
-        );
-        if (!mounted) return;
-        setState(() {
-          _verificationId = webSession.verificationId;
-          _resendToken = null;
-          _webConfirmationResult = webSession.confirmationResult;
-        });
-        _startCountdown();
-        _showMessage('تم إعادة إرسال رمز التحقق');
-        return;
-      }
-      await widget.authService.verifyPhoneNumber(
+      final externalOtpId = await widget.authService.requestOtpCode(
         phoneNumber: widget.phoneNumber,
-        forceResendingToken: _resendToken,
-        verificationCompleted: (_) {},
-        verificationFailed: (e) {
-          _showMessage(widget.authService.mapFirebaseAuthError(e));
-        },
-        codeSent: (verificationId, resendToken) {
-          if (!mounted) return;
-          setState(() {
-            _verificationId = verificationId;
-            _resendToken = resendToken;
-          });
-          _startCountdown();
-          _showMessage('تم إعادة إرسال رمز التحقق');
-        },
-        codeAutoRetrievalTimeout: (verificationId) {
-          if (!mounted) return;
-          setState(() => _verificationId = verificationId);
-        },
       );
+      if (!mounted) return;
+      setState(() {
+        _verificationId = externalOtpId;
+      });
+      _startCountdown();
+      _showMessage('تم إعادة إرسال رمز التحقق');
+      return;
     } catch (_) {
       _showMessage('تعذر إعادة الإرسال. حاول لاحقًا.');
     } finally {
@@ -324,8 +261,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final resetModeReady =
-        widget.isPasswordResetFlow && _verifiedUid != null;
+    final resetModeReady = widget.isPasswordResetFlow && _verifiedUid != null;
 
     return Scaffold(
       appBar: AppBar(

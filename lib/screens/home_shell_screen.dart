@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'bookings_screen.dart';
 import 'map_screen.dart';
 import 'notifications_screen.dart';
+import 'outlet_offers_screen.dart';
 import 'profile_screen.dart';
 
 class HomeShellScreen extends StatefulWidget {
-  const HomeShellScreen({super.key, required this.profile, this.initialIndex = 0});
+  const HomeShellScreen(
+      {super.key, required this.profile, this.initialIndex = 0});
 
   final Map<String, dynamic> profile;
   final int initialIndex;
@@ -44,7 +46,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     HomeShellScreen.tabRequest.value = null;
   }
 
-  Stream<QuerySnapshot<Map<String, dynamic>>> _pendingRequestsStream(String requestOwnerRole) {
+  Stream<QuerySnapshot<Map<String, dynamic>>> _pendingRequestsStream(
+      String requestOwnerRole) {
     return FirebaseFirestore.instance
         .collection('bookings')
         .where('status', isEqualTo: 'pending')
@@ -52,11 +55,13 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         .snapshots();
   }
 
-  int _pendingCount(AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snapshot, String uid) {
+  int _pendingCount(
+      AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snapshot, String uid) {
     final docs = snapshot.data?.docs ?? const [];
     return docs.where((doc) {
       final data = doc.data();
-      final ownerId = (data['createdById'] ?? data['clientId'] ?? '').toString();
+      final ownerId =
+          (data['createdById'] ?? data['clientId'] ?? '').toString();
       return ownerId != uid;
     }).length;
   }
@@ -85,6 +90,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
     final pages = isOutlet
         ? [
+            OutletOffersScreen(profile: widget.profile),
             BookingsScreen(
               profile: widget.profile,
               title: 'الطلبات',
@@ -113,6 +119,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             ProfileScreen(profile: widget.profile),
           ]
         : [
+            OutletOffersScreen(profile: widget.profile),
             BookingsScreen(
               profile: widget.profile,
               title: 'الطلبات',
@@ -125,7 +132,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             ProfileScreen(profile: widget.profile),
           ];
 
-    final mapIndex = isOutlet ? 3 : 1;
+    final mapIndex = isOutlet ? 4 : 2;
 
     final activeMapStream = FirebaseFirestore.instance
         .collection('bookings')
@@ -141,10 +148,18 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           return _buildHomeScaffold(
             pages: pages,
             destinations: [
-              const NavigationDestination(icon: Icon(Icons.list_alt_rounded), label: 'الطلبات'),
-              NavigationDestination(icon: _MapNavIcon(active: hasActiveMap && _index != mapIndex), label: 'الخريطة'),
-              const NavigationDestination(icon: Icon(Icons.notifications_active_rounded), label: 'الإشعارات'),
-              const NavigationDestination(icon: Icon(Icons.person_rounded), label: 'الحساب'),
+              const NavigationDestination(
+                  icon: Icon(Icons.local_offer_rounded), label: 'عروض المنافذ'),
+              const NavigationDestination(
+                  icon: Icon(Icons.list_alt_rounded), label: 'الطلبات'),
+              NavigationDestination(
+                  icon: _MapNavIcon(active: hasActiveMap && _index != mapIndex),
+                  label: 'الخريطة'),
+              const NavigationDestination(
+                  icon: Icon(Icons.notifications_active_rounded),
+                  label: 'الإشعارات'),
+              const NavigationDestination(
+                  icon: Icon(Icons.person_rounded), label: 'الحساب'),
             ],
           );
         }
@@ -156,22 +171,37 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: _pendingRequestsStream('outlet'),
               builder: (context, outletRequestsSnap) {
-                final outletPendingCount = _pendingCount(outletRequestsSnap, uid);
+                final outletPendingCount =
+                    _pendingCount(outletRequestsSnap, uid);
                 return _buildHomeScaffold(
                   pages: pages,
                   destinations: [
-                    const NavigationDestination(icon: Icon(Icons.list_alt_rounded), label: 'الطلبات'),
+                    const NavigationDestination(
+                        icon: Icon(Icons.local_offer_rounded),
+                        label: 'عروض المنافذ'),
+                    const NavigationDestination(
+                        icon: Icon(Icons.list_alt_rounded), label: 'الطلبات'),
                     NavigationDestination(
-                      icon: _BadgeNavIcon(icon: Icons.groups_rounded, count: clientPendingCount),
+                      icon: _BadgeNavIcon(
+                          icon: Icons.groups_rounded,
+                          count: clientPendingCount),
                       label: 'العملاء',
                     ),
                     NavigationDestination(
-                      icon: _BadgeNavIcon(icon: Icons.store_mall_directory_rounded, count: outletPendingCount),
+                      icon: _BadgeNavIcon(
+                          icon: Icons.store_mall_directory_rounded,
+                          count: outletPendingCount),
                       label: 'المنافذ',
                     ),
-                    NavigationDestination(icon: _MapNavIcon(active: hasActiveMap && _index != mapIndex), label: 'الخريطة'),
-                    const NavigationDestination(icon: Icon(Icons.notifications_active_rounded), label: 'الإشعارات'),
-                    const NavigationDestination(icon: Icon(Icons.person_rounded), label: 'الحساب'),
+                    NavigationDestination(
+                        icon: _MapNavIcon(
+                            active: hasActiveMap && _index != mapIndex),
+                        label: 'الخريطة'),
+                    const NavigationDestination(
+                        icon: Icon(Icons.notifications_active_rounded),
+                        label: 'الإشعارات'),
+                    const NavigationDestination(
+                        icon: Icon(Icons.person_rounded), label: 'الحساب'),
                   ],
                 );
               },
@@ -233,7 +263,8 @@ class _MapNavIcon extends StatefulWidget {
   State<_MapNavIcon> createState() => _MapNavIconState();
 }
 
-class _MapNavIconState extends State<_MapNavIcon> with SingleTickerProviderStateMixin {
+class _MapNavIconState extends State<_MapNavIcon>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 700),
