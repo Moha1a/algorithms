@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../services/business_hours_service.dart';
+import '../services/location_guard_service.dart';
 import 'bookings_screen.dart';
 import 'map_screen.dart';
 import 'notifications_screen.dart';
@@ -31,6 +33,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     super.initState();
     _index = widget.initialIndex;
     HomeShellScreen.tabRequest.addListener(_onExternalTabRequest);
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _requestClientLocation());
   }
 
   @override
@@ -44,6 +48,27 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     if (target == null || !mounted) return;
     setState(() => _index = target);
     HomeShellScreen.tabRequest.value = null;
+  }
+
+  Future<void> _requestClientLocation() async {
+    final role = (widget.profile['role'] ?? '').toString();
+    final uid = (widget.profile['uid'] ?? '').toString();
+    if (role != 'client' || uid.isEmpty) return;
+    final pos = await LocationGuardService.instance.requireCurrentLocation(
+      context,
+      title: 'مشاركة الموقع',
+      message: 'مشاركة موقعك تساعدك على رؤية المسافة بينك وبين المنافذ.',
+      crashlyticsKey: 'client_home_location_optional',
+      timeLimit: const Duration(seconds: 8),
+    );
+    if (pos == null) return;
+    await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      'currentLat': pos.latitude,
+      'currentLng': pos.longitude,
+      'lat': pos.latitude,
+      'lng': pos.longitude,
+      'locationUpdatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _pendingRequestsStream(
@@ -73,7 +98,13 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     if (_index >= pages.length) _index = 0;
 
     return Scaffold(
-      body: pages[_index],
+      body: Column(
+        children: [
+          if ((widget.profile['role'] ?? '').toString() == 'outlet')
+            _OutletStatusBar(uid: (widget.profile['uid'] ?? '').toString()),
+          Expanded(child: pages[_index]),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (v) => setState(() => _index = v),
@@ -207,6 +238,45 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
               },
             );
           },
+        );
+      },
+    );
+  }
+}
+
+class _OutletStatusBar extends StatelessWidget {
+  const _OutletStatusBar({required this.uid});
+
+  final String uid;
+
+  @override
+  Widget build(BuildContext context) {
+    if (uid.isEmpty) return const SizedBox.shrink();
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream:
+          FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+      builder: (context, snapshot) {
+        final profile = snapshot.data?.data();
+        if (profile == null) return const SizedBox.shrink();
+        final open = BusinessHoursService.isOpenNow(profile);
+        final color = open ? const Color(0xFF0E7A4F) : const Color(0xFFB91C1C);
+        return SafeArea(
+          bottom: false,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            color: color,
+            child: Text(
+              open
+                  ? 'المنفذ مفتوح ومستعد لاستقبال الطلبات'
+                  : 'المنفذ مغلق، انتقل إلى الملف الشخصي لفتح المنفذ',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
         );
       },
     );

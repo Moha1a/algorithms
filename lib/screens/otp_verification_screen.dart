@@ -9,6 +9,7 @@ import '../services/input_digit_utils.dart';
 import '../theme/app_colors.dart';
 import 'home_shell_screen.dart';
 import 'outlet_hours_setup_screen.dart';
+import 'outlet_location_setup_screen.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   const OtpVerificationScreen({
@@ -176,6 +177,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
               builder: (_) => OutletHoursSetupScreen(profile: profile)),
+          (_) => false,
+        );
+        return;
+      }
+      if (isOutlet && profile['fixedLocationConfigured'] != true) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+              builder: (_) => OutletLocationSetupScreen(profile: profile)),
           (_) => false,
         );
         return;

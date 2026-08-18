@@ -1,4 +1,4 @@
-﻿import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -457,8 +457,8 @@ class _BookingsScreenState extends State<BookingsScreen> {
                                     'المنفذ المقبول: ${(data['outletName'] ?? '').toString()}'),
                               ),
                             if (status == 'accepted' ||
-                                    status == 'in_progress' ||
-                                    status == 'awaiting_provider_code')
+                                status == 'in_progress' ||
+                                status == 'awaiting_provider_code')
                               _OutletOpenStatusBanner(
                                 outletId: (data['outletId'] ?? '').toString(),
                               ),
@@ -811,7 +811,11 @@ class _BookingsScreenState extends State<BookingsScreen> {
       );
     }
 
-    if (isOwner && status == 'pending') {
+    if (isOwner &&
+        (status == 'pending' ||
+            status == 'accepted' ||
+            status == 'in_progress' ||
+            status == 'awaiting_provider_code')) {
       widgets.add(
         OutlinedButton(
           onPressed: () => _cancelAcceptedBooking(bookingDocId, uid),
@@ -2187,9 +2191,12 @@ class _OutletOpenStatusBanner extends StatelessWidget {
         if (profile == null) return const SizedBox.shrink();
         final isOpen = BusinessHoursService.isOpenNow(profile);
         final scheduleText = BusinessHoursService.todayScheduleText(profile);
-        final color = isOpen ? const Color(0xFF0E7A4F) : const Color(0xFF9F1239);
-        final background = isOpen ? const Color(0xFFE8F8EF) : const Color(0xFFFFE4E6);
-        final border = isOpen ? const Color(0xFF86EFAC) : const Color(0xFFFB7185);
+        final color =
+            isOpen ? const Color(0xFF0E7A4F) : const Color(0xFF9F1239);
+        final background =
+            isOpen ? const Color(0xFFE8F8EF) : const Color(0xFFFFE4E6);
+        final border =
+            isOpen ? const Color(0xFF86EFAC) : const Color(0xFFFB7185);
         return Container(
           width: double.infinity,
           margin: const EdgeInsets.only(bottom: 10),
@@ -2233,6 +2240,7 @@ class _OutletOpenStatusBanner extends StatelessWidget {
     );
   }
 }
+
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge({required this.status});
 
@@ -2285,4 +2293,3 @@ class _StatusBadge extends StatelessWidget {
     }
   }
 }
-

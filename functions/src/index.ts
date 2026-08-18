@@ -11,6 +11,11 @@ import {onArrivalMarkedNotifyProvider} from './domain/arrival_marked_notificatio
 import {onBookingEventCreated} from './domain/events';
 import {onChatMessageEvent} from './domain/on_chat_message_event';
 import {onBookingCreatedNotifyOutlets} from './domain/on_booking_created_notification';
+import {
+  onGeneralSupportMessageCreated,
+  onTripSupportMessageCreated,
+} from './domain/on_admin_support_message';
+import {onOutletOfferCreatedNotifyClients} from './domain/on_outlet_offer_created_notification';
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -28,3 +33,6 @@ exports.onArrivalMarkedNotifyProvider = onArrivalMarkedNotifyProvider;
 exports.onBookingEventCreated = onBookingEventCreated;
 exports.onChatMessageEvent = onChatMessageEvent;
 exports.onBookingCreatedNotifyOutlets = onBookingCreatedNotifyOutlets;
+exports.onGeneralSupportMessageCreated = onGeneralSupportMessageCreated;
+exports.onTripSupportMessageCreated = onTripSupportMessageCreated;
+exports.onOutletOfferCreatedNotifyClients = onOutletOfferCreatedNotifyClients;

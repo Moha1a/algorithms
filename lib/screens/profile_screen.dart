@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/business_hours_service.dart';
 import 'outlet_hours_setup_screen.dart';
+import 'outlet_location_setup_screen.dart';
 import 'role_selection_screen.dart';
 import 'support_chat_screen.dart';
 
@@ -131,6 +133,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
               },
               icon: const Icon(Icons.schedule_rounded),
               label: const Text('تعديل أوقات العمل'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => OutletLocationSetupScreen(
+                      profile: Map<String, dynamic>.from(widget.profile),
+                      popOnSave: true,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.map_rounded),
+              label: const Text('تعديل موقع ومنطقة المنفذ'),
+            ),
+            const SizedBox(height: 8),
+            StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(uid)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final liveProfile = {
+                  ...widget.profile,
+                  ...?snapshot.data?.data(),
+                };
+                final isOpen = BusinessHoursService.isOpenNow(liveProfile);
+                return FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor:
+                        isOpen ? Colors.redAccent : const Color(0xFF0E7A4F),
+                  ),
+                  onPressed: () async {
+                    await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(uid)
+                        .set({
+                      'adminForceClosed': isOpen ? true : FieldValue.delete(),
+                      'adminForceOpen': FieldValue.delete(),
+                      'manualClosedByOutlet': isOpen,
+                      'manualOpenStateUpdatedAt': FieldValue.serverTimestamp(),
+                    }, SetOptions(merge: true));
+                  },
+                  icon: Icon(isOpen
+                      ? Icons.lock_clock_rounded
+                      : Icons.lock_open_rounded),
+                  label:
+                      Text(isOpen ? 'غلق المنفذ مؤقتاً' : 'إلغاء غلق المنفذ'),
+                );
+              },
             ),
           ],
           const SizedBox(height: 8),

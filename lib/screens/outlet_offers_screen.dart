@@ -20,7 +20,6 @@ class OutletOffersScreen extends StatefulWidget {
 
 class _OutletOffersScreenState extends State<OutletOffersScreen> {
   static const _minimumAmount = 1000.0;
-  static const _cardBank = 'مصرف الرافدين';
 
   bool _savingLocation = false;
 
@@ -92,6 +91,7 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
     final maxClientsCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
     var offerType = 'withdraw';
+    var bankScope = 'all';
 
     final ok = await showModalBottomSheet<bool>(
       context: context,
@@ -151,6 +151,26 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
                     ],
                     onChanged: (value) =>
                         setModalState(() => offerType = value ?? 'withdraw'),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: bankScope,
+                    decoration: const InputDecoration(
+                      labelText: 'اسم المصرف',
+                      prefixIcon: Icon(Icons.account_balance_rounded),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'all',
+                        child: Text('كل المصارف'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'rafidain',
+                        child: Text('فقط مصرف الرافدين'),
+                      ),
+                    ],
+                    onChanged: (value) =>
+                        setModalState(() => bankScope = value ?? 'all'),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
@@ -228,6 +248,8 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
       'outletLat': outletLat,
       'outletLng': outletLng,
       'type': offerType,
+      'bankScope': bankScope,
+      'bankName': bankScope == 'rafidain' ? 'مصرف الرافدين' : 'كل المصارف',
       'pricePerMillion': pricePerMillion,
       'maxClients': maxClients,
       'activeAcceptedCount': 0,
@@ -269,15 +291,8 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
     final result = await _openAcceptOfferSheet(offer);
     if (result == null) return;
 
-    final clientPosition =
-        await LocationGuardService.instance.requireCurrentLocation(
-      context,
-      title: 'مشاركة الموقع مطلوبة لقبول العرض',
-      message: 'نحتاج موقعك حتى يظهر الطلب على الخريطة ويتم حساب المسافة.',
-      crashlyticsKey: 'outlet_offer_accept_location_required',
-      timeLimit: const Duration(seconds: 8),
-    );
-    if (clientPosition == null) return;
+    final clientLat = _profileLat(widget.profile);
+    final clientLng = _profileLng(widget.profile);
 
     final offerRef =
         FirebaseFirestore.instance.collection('outlet_offers').doc(offerId);
@@ -337,7 +352,9 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
           'price': commission,
           'commission': commission,
           'pricePerMillion': result.pricePerMillion,
-          'cardBank': _cardBank,
+          'cardBank': (data['bankName'] ?? '').toString().isEmpty
+              ? 'كل المصارف'
+              : (data['bankName'] ?? '').toString(),
           'governorate': (widget.profile['governorate'] ?? '').toString(),
           'requestOwnerRole': currentRole == 'outlet' ? 'outlet' : 'client',
           'createdAt': FieldValue.serverTimestamp(),
@@ -347,12 +364,10 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
           'offerSeatExpiresAt': Timestamp.fromDate(
             now.add(const Duration(days: 8)),
           ),
-          'clientLat': clientPosition.latitude,
-          'clientLng': clientPosition.longitude,
-          'clientLocation': {
-            'lat': clientPosition.latitude,
-            'lng': clientPosition.longitude,
-          },
+          if (clientLat != null) 'clientLat': clientLat,
+          if (clientLng != null) 'clientLng': clientLng,
+          if (clientLat != null && clientLng != null)
+            'clientLocation': {'lat': clientLat, 'lng': clientLng},
           'outletLat': data['outletLat'],
           'outletLng': data['outletLng'],
           'outletLocation': {
@@ -403,6 +418,41 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _cancelOutletOffer(String offerId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('إلغاء العرض'),
+        content: const Text('هل أنت متأكد من إلغاء هذا العرض؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('رجوع'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('إلغاء العرض'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await FirebaseFirestore.instance
+        .collection('outlet_offers')
+        .doc(offerId)
+        .set({
+      'status': 'cancelled',
+      'cancelledAt': FieldValue.serverTimestamp(),
+      'cancelledBy': _uid,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم إلغاء العرض.')),
+    );
   }
 
   Future<bool> _clientHasActiveAcceptedBooking(String clientId) async {
@@ -621,6 +671,9 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
                 return true;
               }).toList()
                 ..sort((a, b) {
+                  final ao = BusinessHoursService.isOpenNow(a.data()) ? 0 : 1;
+                  final bo = BusinessHoursService.isOpenNow(b.data()) ? 0 : 1;
+                  if (ao != bo) return ao.compareTo(bo);
                   final da =
                       _distanceKm(a.data(), liveProfile) ?? double.maxFinite;
                   final db =
@@ -642,10 +695,9 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
                   final km = _distanceKm(data, liveProfile);
                   final outletId = (data['outletId'] ?? '').toString();
                   final offerType = (data['type'] ?? 'withdraw').toString();
+                  final isMyOffer = outletId == _uid;
                   final canAccept = (!_isOutlet && offerType != 'discharge') ||
-                      (_isOutlet &&
-                          offerType == 'discharge' &&
-                          outletId != _uid);
+                      (_isOutlet && offerType == 'discharge' && !isMyOffer);
                   return FutureBuilder<int>(
                     future: _activeSeatCount(doc.id),
                     builder: (context, seatSnap) =>
@@ -656,10 +708,8 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
                           ...data,
                           ...?outletSnap.data,
                         };
-                        if (outletSnap.hasData &&
-                            !BusinessHoursService.isOpenNow(displayData)) {
-                          return const SizedBox.shrink();
-                        }
+                        final outletOpen =
+                            BusinessHoursService.isOpenNow(displayData);
                         return _OutletOfferCard(
                           offerId: doc.id,
                           data: displayData,
@@ -669,7 +719,10 @@ class _OutletOffersScreenState extends State<OutletOffersScreen> {
                           needsLocation: km == null,
                           savingLocation: _savingLocation,
                           onShareLocation: _shareLocation,
-                          onAccept: canAccept
+                          onCancel: isMyOffer
+                              ? () => _cancelOutletOffer(doc.id)
+                              : null,
+                          onAccept: canAccept && outletOpen
                               ? () => _acceptOffer(doc.id, data)
                               : null,
                         );
@@ -746,6 +799,7 @@ class _OutletOfferCard extends StatelessWidget {
     required this.needsLocation,
     required this.savingLocation,
     required this.onShareLocation,
+    required this.onCancel,
     required this.onAccept,
   });
 
@@ -757,6 +811,7 @@ class _OutletOfferCard extends StatelessWidget {
   final bool needsLocation;
   final bool savingLocation;
   final VoidCallback onShareLocation;
+  final VoidCallback? onCancel;
   final VoidCallback? onAccept;
 
   @override
@@ -778,6 +833,9 @@ class _OutletOfferCard extends StatelessWidget {
     final remaining = max(0, maxClients - activeAccepted);
     final scheduleText = BusinessHoursService.todayScheduleText(data);
     final isOpen = BusinessHoursService.isOpenNow(data);
+    final bankName = (data['bankName'] ?? data['cardBank'] ?? 'كل المصارف')
+        .toString()
+        .trim();
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -920,6 +978,23 @@ class _OutletOfferCard extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
+              const Icon(Icons.account_balance_rounded,
+                  size: 18, color: AppColors.textMuted),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'اسم المصرف: ${bankName.isEmpty ? 'كل المصارف' : bankName}',
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
               const Icon(Icons.groups_rounded,
                   size: 18, color: AppColors.textMuted),
               const SizedBox(width: 6),
@@ -942,6 +1017,33 @@ class _OutletOfferCard extends StatelessWidget {
                     ? 'جاري تحديث الموقع...'
                     : 'مشاركة الموقع لرؤية البعد والمسافة',
               ),
+            ),
+          ],
+          if (!isOpen) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFE4E6),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFFB7185)),
+              ),
+              child: const Text(
+                'المنفذ مغلق حالياً ولا يمكن قبول هذا العرض.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFF9F1239),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+          if (onCancel != null) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: onCancel,
+              icon: const Icon(Icons.cancel_rounded),
+              label: const Text('إلغاء العرض'),
             ),
           ],
           if (onAccept != null) ...[

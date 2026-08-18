@@ -3,12 +3,17 @@ import 'package:flutter/material.dart';
 
 import '../services/business_hours_service.dart';
 import '../theme/app_colors.dart';
-import 'home_shell_screen.dart';
+import 'outlet_location_setup_screen.dart';
 
 class OutletHoursSetupScreen extends StatefulWidget {
-  const OutletHoursSetupScreen({super.key, required this.profile});
+  const OutletHoursSetupScreen({
+    super.key,
+    required this.profile,
+    this.popOnSave = false,
+  });
 
   final Map<String, dynamic> profile;
+  final bool popOnSave;
 
   @override
   State<OutletHoursSetupScreen> createState() => _OutletHoursSetupScreenState();
@@ -139,12 +144,20 @@ class _OutletHoursSetupScreenState extends State<OutletHoursSetupScreen> {
       'businessHoursConfigured': true,
       'businessHoursUpdatedAt': FieldValue.serverTimestamp(),
       'approvalStatus': 'approved',
+      'adminForceOpen': FieldValue.delete(),
+      'adminForceClosed': FieldValue.delete(),
     }, SetOptions(merge: true));
     if (!mounted) return;
     final nextProfile = {...widget.profile, 'businessHours': businessHours};
     setState(() => _saving = false);
+    if (widget.popOnSave) {
+      Navigator.of(context).pop(nextProfile);
+      return;
+    }
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => HomeShellScreen(profile: nextProfile)),
+      MaterialPageRoute(
+        builder: (_) => OutletLocationSetupScreen(profile: nextProfile),
+      ),
       (_) => false,
     );
   }

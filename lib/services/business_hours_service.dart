@@ -32,6 +32,8 @@ class BusinessHoursService {
   }
 
   static bool isOpenNow(Map<String, dynamic> profile, {DateTime? now}) {
+    if (profile['adminForceOpen'] == true) return true;
+    if (profile['adminForceClosed'] == true) return false;
     final raw = profile['businessHours'];
     if (raw is! Map) return true;
     final current = now ?? DateTime.now();

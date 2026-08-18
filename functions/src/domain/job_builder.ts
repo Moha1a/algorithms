@@ -5,7 +5,9 @@ export type NotificationJobType =
   | 'booking_accepted'
   | 'booking_direct_accepted'
   | 'booking_new_request_created'
+  | 'outlet_offer_created'
   | 'chat_message_created'
+  | 'admin_support_message'
   | 'booking_auto_cancelled_11h'
   | 'booking_auto_cancelled_14h';
 

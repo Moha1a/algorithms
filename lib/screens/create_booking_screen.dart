@@ -25,19 +25,30 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   static const _suggestedRate = 0.005;
   static const _minimumAmount = 1000.0;
   static const _minimumCommission = 250.0;
-  static const _cardBank = 'مصرف الرافدين';
 
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _priceController = TextEditingController();
+  late final TextEditingController _bankController;
+  final _bankFocusNode = FocusNode();
 
   String _type = 'withdraw';
   bool _saving = false;
 
   @override
+  void initState() {
+    super.initState();
+    _bankController = TextEditingController(
+      text: (widget.profile['lastCardBank'] ?? '').toString(),
+    );
+  }
+
+  @override
   void dispose() {
     _amountController.dispose();
     _priceController.dispose();
+    _bankController.dispose();
+    _bankFocusNode.dispose();
     super.dispose();
   }
 
@@ -51,14 +62,18 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     final amount = _parseMoney(_amountController.text) ?? 0;
     final price = _parseMoney(_priceController.text) ?? 0;
     final isDischarge = _type == 'discharge';
-    final minAllowedCommission = amount > 0 ? _withMinimumCommission(amount * _minCommissionRate) : 0.0;
-    final maxAllowedCommission = amount > 0 ? _withMinimumCommission(amount * _maxCommissionRate) : 0.0;
-    final suggestedPrice = amount > 0 ? _withMinimumCommission(amount * _suggestedRate) : 0.0;
+    final minAllowedCommission =
+        amount > 0 ? _withMinimumCommission(amount * _minCommissionRate) : 0.0;
+    final maxAllowedCommission =
+        amount > 0 ? _withMinimumCommission(amount * _maxCommissionRate) : 0.0;
+    final suggestedPrice =
+        amount > 0 ? _withMinimumCommission(amount * _suggestedRate) : 0.0;
 
     final typeItems = <DropdownMenuItem<String>>[
       const DropdownMenuItem(value: 'withdraw', child: Text('سحب من بطاقتك')),
       const DropdownMenuItem(value: 'deposit', child: Text('شحن إلى بطاقتك')),
-      if (role == 'outlet') const DropdownMenuItem(value: 'discharge', child: Text('تفريغ')),
+      if (role == 'outlet')
+        const DropdownMenuItem(value: 'discharge', child: Text('تفريغ')),
     ];
 
     if (role != 'outlet' && _type == 'discharge') {
@@ -78,18 +93,68 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                   initialValue: _type,
                   decoration: const InputDecoration(labelText: 'نوع الطلب'),
                   items: typeItems,
-                  onChanged: (value) => setState(() => _type = value ?? 'withdraw'),
+                  onChanged: (value) =>
+                      setState(() => _type = value ?? 'withdraw'),
                 ),
                 const SizedBox(height: 12),
                 _RequestTypeInfoCard(type: _type),
                 const SizedBox(height: 12),
-                TextFormField(
-                  initialValue: _cardBank,
-                  readOnly: true,
-                  decoration: const InputDecoration(
-                    labelText: 'مصرف البطاقة',
-                    prefixIcon: Icon(Icons.account_balance_rounded),
-                  ),
+                RawAutocomplete<String>(
+                  textEditingController: _bankController,
+                  focusNode: _bankFocusNode,
+                  optionsBuilder: (textValue) {
+                    final query = textValue.text.trim();
+                    final options = <String>{
+                      if ((widget.profile['lastCardBank'] ?? '')
+                          .toString()
+                          .trim()
+                          .isNotEmpty)
+                        (widget.profile['lastCardBank'] ?? '').toString(),
+                      'مصرف الرافدين',
+                    }.where((bank) {
+                      return query.isEmpty || bank.contains(query);
+                    }).toList();
+                    return options;
+                  },
+                  fieldViewBuilder:
+                      (context, controller, focusNode, onFieldSubmitted) {
+                    return TextFormField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      decoration: const InputDecoration(
+                        labelText: 'اسم المصرف',
+                        prefixIcon: Icon(Icons.account_balance_rounded),
+                      ),
+                      validator: (value) {
+                        if ((value ?? '').trim().isEmpty) {
+                          return 'يرجى إدخال اسم المصرف';
+                        }
+                        return null;
+                      },
+                    );
+                  },
+                  optionsViewBuilder: (context, onSelected, options) {
+                    return Align(
+                      alignment: Alignment.topRight,
+                      child: Material(
+                        elevation: 4,
+                        child: SizedBox(
+                          width: 280,
+                          child: ListView(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            children: [
+                              for (final option in options)
+                                ListTile(
+                                  title: Text(option),
+                                  onTap: () => onSelected(option),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 14),
                 TextFormField(
@@ -126,7 +191,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                 if (amount > 0 && !isDischarge)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
-                    child: Text('المبلغ المدخل: ${MoneyUtils.iqdWithWords(amount)}'),
+                    child: Text(
+                        'المبلغ المدخل: ${MoneyUtils.iqdWithWords(amount)}'),
                   ),
                 const SizedBox(height: 14),
                 if (amount > 0)
@@ -134,7 +200,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       'العمولة المقترحة: ${MoneyUtils.iqdWithWords(suggestedPrice)}',
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w500),
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF6B7280),
+                          fontWeight: FontWeight.w500),
                     ),
                   ),
                 TextFormField(
@@ -151,10 +220,14 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                     if (parsed < _minimumCommission) {
                       return 'أقل عمولة مسموحة هي ${MoneyUtils.iqdWithWords(_minimumCommission)}';
                     }
-                    if (!isDischarge && amount > 0 && parsed < minAllowedCommission) {
+                    if (!isDischarge &&
+                        amount > 0 &&
+                        parsed < minAllowedCommission) {
                       return 'العمولة أقل من الحد الأدنى المسموح';
                     }
-                    if (!isDischarge && amount > 0 && parsed > maxAllowedCommission) {
+                    if (!isDischarge &&
+                        amount > 0 &&
+                        parsed > maxAllowedCommission) {
                       return 'العمولة أعلى من الحد الأعلى المسموح';
                     }
                     return null;
@@ -163,16 +236,22 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                 if (price > 0)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
-                    child: Text('العمولة المدخلة: ${MoneyUtils.iqdWithWords(price)}'),
+                    child: Text(
+                        'العمولة المدخلة: ${MoneyUtils.iqdWithWords(price)}'),
                   ),
                 const SizedBox(height: 24),
                 SizedBox(
                   height: 48,
                   child: FilledButton.icon(
                     onPressed: _saving ? null : _createBooking,
-                    icon: _saving ? const SizedBox.shrink() : const Icon(Icons.save_rounded),
+                    icon: _saving
+                        ? const SizedBox.shrink()
+                        : const Icon(Icons.save_rounded),
                     label: _saving
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2))
                         : const Text('إنشاء الطلب'),
                   ),
                 ),
@@ -186,8 +265,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
 
   Future<void> _requestNotificationsOptional() async {
     try {
-      final current = await FirebaseMessaging.instance.getNotificationSettings();
-      FirebaseCrashlytics.instance.setCustomKey('notification_permission_status', current.authorizationStatus.name);
+      final current =
+          await FirebaseMessaging.instance.getNotificationSettings();
+      FirebaseCrashlytics.instance.setCustomKey(
+          'notification_permission_status', current.authorizationStatus.name);
       if (current.authorizationStatus == AuthorizationStatus.authorized ||
           current.authorizationStatus == AuthorizationStatus.provisional) {
         return;
@@ -198,19 +279,28 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         barrierDismissible: true,
         builder: (ctx) => AlertDialog(
           title: const Text('تفعيل الإشعارات'),
-          content: const Text('يمكنك تفعيل الإشعارات لتصلك تحديثات الطلبات والرسائل الجديدة.'),
+          content: const Text(
+              'يمكنك تفعيل الإشعارات لتصلك تحديثات الطلبات والرسائل الجديدة.'),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('لاحقاً')),
-            FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('تفعيل الإشعارات')),
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('لاحقاً')),
+            FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('تفعيل الإشعارات')),
           ],
         ),
       );
       if (ask != true) return;
-      final settings = await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
-      FirebaseCrashlytics.instance.setCustomKey('notification_permission_status', settings.authorizationStatus.name);
-      debugPrint('[REQUEST CREATE] notification permission=${settings.authorizationStatus}');
+      final settings = await FirebaseMessaging.instance
+          .requestPermission(alert: true, badge: true, sound: true);
+      FirebaseCrashlytics.instance.setCustomKey(
+          'notification_permission_status', settings.authorizationStatus.name);
+      debugPrint(
+          '[REQUEST CREATE] notification permission=${settings.authorizationStatus}');
     } catch (error, stackTrace) {
-      debugPrint('[REQUEST CREATE] optional notification permission failed: $error');
+      debugPrint(
+          '[REQUEST CREATE] optional notification permission failed: $error');
       debugPrint('$stackTrace');
       FirebaseCrashlytics.instance.recordError(error, stackTrace, fatal: false);
     }
@@ -236,13 +326,23 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     final amount = _parseMoney(_amountController.text) ?? 0;
     final price = _parseMoney(_priceController.text) ?? 0;
     final commission = price;
+    final cardBank = _bankController.text.trim();
 
     final minAllowed = _withMinimumCommission(amount * _minCommissionRate);
     final maxAllowed = _withMinimumCommission(amount * _maxCommissionRate);
 
     if (amount < _minimumAmount) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('أقل مبلغ مسموح هو ${MoneyUtils.iqdWithWords(_minimumAmount)}.')),
+        SnackBar(
+            content: Text(
+                'أقل مبلغ مسموح هو ${MoneyUtils.iqdWithWords(_minimumAmount)}.')),
+      );
+      if (mounted) setState(() => _saving = false);
+      return;
+    }
+    if (cardBank.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى إدخال اسم المصرف.')),
       );
       if (mounted) setState(() => _saving = false);
       return;
@@ -250,29 +350,37 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
 
     if (commission + 0.0001 < _minimumCommission) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('أقل عمولة مسموحة هي ${MoneyUtils.iqdWithWords(_minimumCommission)}.')),
+        SnackBar(
+            content: Text(
+                'أقل عمولة مسموحة هي ${MoneyUtils.iqdWithWords(_minimumCommission)}.')),
       );
       if (mounted) setState(() => _saving = false);
       return;
     }
     if (_type != 'discharge' && commission + 0.0001 < minAllowed) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('العمولة أقل من الحد الأدنى المسموح وهو ${MoneyUtils.iqdWithWords(minAllowed)}.')),
+        SnackBar(
+            content: Text(
+                'العمولة أقل من الحد الأدنى المسموح وهو ${MoneyUtils.iqdWithWords(minAllowed)}.')),
       );
       if (mounted) setState(() => _saving = false);
       return;
     }
     if (_type != 'discharge' && commission > maxAllowed + 0.0001) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('العمولة أعلى من الحد الأعلى المسموح وهو ${MoneyUtils.iqdWithWords(maxAllowed)}.')),
+        SnackBar(
+            content: Text(
+                'العمولة أعلى من الحد الأعلى المسموح وهو ${MoneyUtils.iqdWithWords(maxAllowed)}.')),
       );
       if (mounted) setState(() => _saving = false);
       return;
     }
 
     FirebaseCrashlytics.instance.log('request_create_location_required');
-    FirebaseCrashlytics.instance.setCustomKey('request_create_location_required', true);
-    final clientPosition = await LocationGuardService.instance.requireCurrentLocation(
+    FirebaseCrashlytics.instance
+        .setCustomKey('request_create_location_required', true);
+    final clientPosition =
+        await LocationGuardService.instance.requireCurrentLocation(
       context,
       title: 'مشاركة الموقع مطلوبة لإنشاء الطلب',
       message: 'يجب مشاركة موقعك الحالي قبل إنشاء أي طلب جديد.',
@@ -290,18 +398,27 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
 
     try {
       if (role == 'client') {
-        FirebaseCrashlytics.instance.setCustomKey('client_active_request_check', true);
+        FirebaseCrashlytics.instance
+            .setCustomKey('client_active_request_check', true);
         final active = await FirebaseFirestore.instance
             .collection('bookings')
             .where('clientId', isEqualTo: uid)
-            .where('status', whereIn: ['pending', 'accepted', 'in_progress', 'awaiting_provider_code'])
+            .where('status', whereIn: [
+              'pending',
+              'accepted',
+              'in_progress',
+              'awaiting_provider_code'
+            ])
             .limit(1)
             .get();
-        FirebaseCrashlytics.instance.setCustomKey('client_active_request_found', active.docs.isNotEmpty);
+        FirebaseCrashlytics.instance.setCustomKey(
+            'client_active_request_found', active.docs.isNotEmpty);
         if (active.docs.isNotEmpty) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('لديك طلب نشط حالياً. لا يمكنك إنشاء طلب جديد قبل إكمال أو إلغاء الطلب الحالي.')),
+            const SnackBar(
+                content: Text(
+                    'لديك طلب نشط حالياً. لا يمكنك إنشاء طلب جديد قبل إكمال أو إلغاء الطلب الحالي.')),
           );
           return;
         }
@@ -325,7 +442,9 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
             if (age.inSeconds <= 45) {
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('تم إنشاء طلب مشابه قبل لحظات. يرجى الانتظار قليلاً قبل المحاولة مرة أخرى.')),
+                const SnackBar(
+                    content: Text(
+                        'تم إنشاء طلب مشابه قبل لحظات. يرجى الانتظار قليلاً قبل المحاولة مرة أخرى.')),
               );
               return;
             }
@@ -346,7 +465,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         'price': price,
         'commissionRate': _type == 'discharge' ? null : _maxCommissionRate,
         'commission': commission,
-        'cardBank': _cardBank,
+        'cardBank': cardBank,
         'governorate': governorate,
         'requestOwnerRole': role,
         'createdAt': FieldValue.serverTimestamp(),
@@ -354,6 +473,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         'clientLng': clientLng,
         'clientLocation': {'lat': clientLat, 'lng': clientLng},
       });
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'lastCardBank': cardBank,
+        'lastCardBankUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
       debugPrint('[REQUEST CREATE] success bookingId=${ref.id}');
       if (!mounted) return;
@@ -385,7 +508,8 @@ class _RequestTypeInfoCard extends StatelessWidget {
       _ => 'سحب من بطاقتك',
     };
     final body = switch (type) {
-      'deposit' => 'اختر هذا النوع إذا تريد شحن مبلغ إلى بطاقتك عن طريق منفذ مناسب.',
+      'deposit' =>
+        'اختر هذا النوع إذا تريد شحن مبلغ إلى بطاقتك عن طريق منفذ مناسب.',
       'discharge' => 'خاص بالمنافذ لتفريغ الرصيد حسب الطلبات المتاحة.',
       _ => 'اختر هذا النوع إذا تريد سحب مبلغ من بطاقتك عن طريق منفذ مناسب.',
     };

@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../services/app_version_service.dart';
 import '../services/input_digit_utils.dart';
 import '../services/push_sender_service.dart';
+import 'outlet_hours_setup_screen.dart';
 import 'support_chat_screen.dart';
 
 class AdminDashboardScreen extends StatelessWidget {
@@ -15,7 +16,7 @@ class AdminDashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 5,
+      length: 6,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('منفذك - لوحة الإدارة'),
@@ -32,6 +33,7 @@ class AdminDashboardScreen extends StatelessWidget {
               Tab(text: 'المنافذ'),
               Tab(text: 'العملاء'),
               Tab(text: 'الطلبات'),
+              Tab(text: 'عروض المنافذ'),
               Tab(text: 'المحادثات'),
               Tab(text: 'نسخ التطبيق'),
             ],
@@ -42,6 +44,7 @@ class AdminDashboardScreen extends StatelessWidget {
             _UsersAdminTab(role: 'outlet'),
             _UsersAdminTab(role: 'client'),
             _TripsAdminTab(),
+            _OutletOffersAdminTab(),
             _ChatsAdminTab(),
             _VersionPolicyAdminTab(),
           ],
@@ -131,11 +134,86 @@ class _UsersAdminTab extends StatefulWidget {
 class _UsersAdminTabState extends State<_UsersAdminTab> {
   String _q = '';
 
+  Future<void> _setOutletManualOpenState(
+    String uid, {
+    required bool open,
+  }) async {
+    await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      'adminForceOpen': open,
+      'adminForceClosed': !open,
+      'adminOpenStateUpdatedAt': FieldValue.serverTimestamp(),
+      'adminOpenStateUpdatedBy': 'admin',
+    }, SetOptions(merge: true));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content:
+              Text(open ? 'تم فتح المنفذ يدوياً.' : 'تم إغلاق المنفذ يدوياً.')),
+    );
+  }
+
+  Future<void> _clearOutletManualOpenState(String uid) async {
+    await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      'adminForceOpen': FieldValue.delete(),
+      'adminForceClosed': FieldValue.delete(),
+      'adminOpenStateUpdatedAt': FieldValue.serverTimestamp(),
+      'adminOpenStateUpdatedBy': 'admin',
+    }, SetOptions(merge: true));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+          content: Text('تم إلغاء التحكم اليدوي والرجوع لأوقات العمل.')),
+    );
+  }
+
+  Future<void> _deleteUserAccount(String uid, Map<String, dynamic> user) async {
+    final label = (user['fullName'] ?? user['phoneNumber'] ?? uid).toString();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف الحساب'),
+        content: Text(
+          'هل أنت متأكد من حذف حساب $label؟ سيتم حذف ملف الحساب من التطبيق وسيحتاج المستخدم إلى إنشاء حساب من جديد.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('حذف الحساب'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+    final tokenSnap = await userRef.collection('fcmTokens').limit(200).get();
+    final devicesSnap = await userRef.collection('devices').limit(200).get();
+    final batch = FirebaseFirestore.instance.batch();
+    for (final doc in tokenSnap.docs) {
+      batch.delete(doc.reference);
+    }
+    for (final doc in devicesSnap.docs) {
+      batch.delete(doc.reference);
+    }
+    batch.delete(userRef);
+    await batch.commit();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم حذف الحساب من التطبيق.')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final stream = FirebaseFirestore.instance
         .collection('users')
         .where('role', isEqualTo: widget.role)
+        .orderBy('createdAt', descending: true)
         .snapshots();
     return Column(
       children: [
@@ -177,6 +255,11 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                           : approvalStatus == 'pending'
                               ? 'بانتظار الموافقة'
                               : '';
+                  final manualOpenState = u['adminForceOpen'] == true
+                      ? 'مفتوح يدوياً من الأدمن'
+                      : u['adminForceClosed'] == true
+                          ? 'مغلق يدوياً من الأدمن'
+                          : '';
                   return Card(
                     child: ListTile(
                       title: Text((u['fullName'] ?? uid).toString()),
@@ -185,7 +268,8 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                         'الهاتف: ${(u['phoneNumber'] ?? '').toString()}\n'
                         'معرف الحساب: $uid\n'
                         'التقييم: ${(u['ratingAverage'] ?? 0).toString()}'
-                        '${statusLabel.isEmpty ? '' : '\nالحالة: $statusLabel'}',
+                        '${statusLabel.isEmpty ? '' : '\nالحالة: $statusLabel'}'
+                        '${manualOpenState.isEmpty ? '' : '\nحالة المنفذ: $manualOpenState'}',
                       ),
                       isThreeLine: true,
                       trailing: PopupMenuButton<String>(
@@ -264,6 +348,24 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                                 ),
                               ),
                             );
+                          } else if (v == 'outlet_force_open') {
+                            await _setOutletManualOpenState(uid, open: true);
+                          } else if (v == 'outlet_force_closed') {
+                            await _setOutletManualOpenState(uid, open: false);
+                          } else if (v == 'outlet_clear_manual_state') {
+                            await _clearOutletManualOpenState(uid);
+                          } else if (v == 'edit_outlet_hours') {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => OutletHoursSetupScreen(
+                                  profile: {
+                                    ...u,
+                                    'uid': uid,
+                                  },
+                                  popOnSave: true,
+                                ),
+                              ),
+                            );
                           } else if (v == 'remove') {
                             await FirebaseFirestore.instance
                                 .collection('users')
@@ -271,6 +373,8 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                                 .set({
                               'isBlocked': true,
                             }, SetOptions(merge: true));
+                          } else if (v == 'delete_account') {
+                            await _deleteUserAccount(uid, u);
                           } else if (v == 'approve_outlet') {
                             await FirebaseFirestore.instance
                                 .collection('users')
@@ -339,6 +443,22 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                             const PopupMenuItem(
                                 value: 'set_outlet_location',
                                 child: Text('تحديد موقع/منطقة المنفذ')),
+                          if (isOutletRole)
+                            const PopupMenuItem(
+                                value: 'outlet_force_open',
+                                child: Text('فتح المنفذ الآن')),
+                          if (isOutletRole)
+                            const PopupMenuItem(
+                                value: 'outlet_force_closed',
+                                child: Text('إغلاق المنفذ الآن')),
+                          if (isOutletRole)
+                            const PopupMenuItem(
+                                value: 'outlet_clear_manual_state',
+                                child: Text('الرجوع لأوقات العمل')),
+                          if (isOutletRole)
+                            const PopupMenuItem(
+                                value: 'edit_outlet_hours',
+                                child: Text('تعديل أوقات العمل')),
                           if (isOutletRole && approvalStatus == 'pending')
                             const PopupMenuItem(
                                 value: 'approve_outlet',
@@ -349,6 +469,9 @@ class _UsersAdminTabState extends State<_UsersAdminTab> {
                                 child: Text('رفض طلب المنفذ')),
                           const PopupMenuItem(
                               value: 'remove', child: Text('حظر المستخدم')),
+                          const PopupMenuItem(
+                              value: 'delete_account',
+                              child: Text('حذف الحساب')),
                         ],
                       ),
                     ),
@@ -525,6 +648,22 @@ class _AdminUserPhoneLine extends StatelessWidget {
 class _TripsAdminTabState extends State<_TripsAdminTab> {
   String _q = '';
 
+  int _bookingPriority(Map<String, dynamic> data) {
+    final status = (data['status'] ?? '').toString();
+    if (status == 'accepted' ||
+        status == 'in_progress' ||
+        status == 'awaiting_provider_code') {
+      return 0;
+    }
+    if (status == 'pending') return 1;
+    return 2;
+  }
+
+  int _timestampMs(Object? value) {
+    if (value is Timestamp) return value.millisecondsSinceEpoch;
+    return 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     final stream =
@@ -561,7 +700,15 @@ class _TripsAdminTabState extends State<_TripsAdminTab> {
                         .toString()
                         .toLowerCase()
                         .contains(_q);
-              }).toList();
+              }).toList()
+                ..sort((a, b) {
+                  final ap = _bookingPriority(a.data());
+                  final bp = _bookingPriority(b.data());
+                  if (ap != bp) return ap.compareTo(bp);
+                  final at = _timestampMs(a.data()['createdAt']);
+                  final bt = _timestampMs(b.data()['createdAt']);
+                  return bt.compareTo(at);
+                });
               return ListView.builder(
                 padding: const EdgeInsets.all(12),
                 itemCount: docs.length,
@@ -639,6 +786,101 @@ class _TripsAdminTabState extends State<_TripsAdminTab> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _OutletOffersAdminTab extends StatelessWidget {
+  const _OutletOffersAdminTab();
+
+  Future<void> _deleteOffer(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف عرض المنفذ'),
+        content: const Text(
+          'هل أنت متأكد من حذف هذا العرض؟ لا يمكن التراجع عن هذه العملية.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await doc.reference.delete();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم حذف العرض.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stream = FirebaseFirestore.instance
+        .collection('outlet_offers')
+        .where('status', isEqualTo: 'active')
+        .snapshots();
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: stream,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final docs = snapshot.data!.docs;
+        if (docs.isEmpty) {
+          return const Center(child: Text('لا توجد عروض حالية.'));
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: docs.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
+            final doc = docs[index];
+            final data = doc.data();
+            final outletId = (data['outletId'] ?? '').toString();
+            final region = (data['outletRegion'] ?? '').toString();
+            final governorate = (data['outletGovernorate'] ?? '').toString();
+            final type = (data['type'] ?? '').toString();
+            final price = (data['pricePerMillion'] ?? '').toString();
+            final maxClients = (data['maxClients'] ?? '').toString();
+            return Card(
+              child: ListTile(
+                title: Text('عرض منفذ - $type'),
+                subtitle: Text(
+                  [
+                    if (governorate.isNotEmpty || region.isNotEmpty)
+                      'الموقع: $governorate $region',
+                    if (price.isNotEmpty) 'السعر لكل مليون: $price',
+                    if (maxClients.isNotEmpty) 'عدد العملاء: $maxClients',
+                    if (outletId.isNotEmpty) 'حساب المنفذ: $outletId',
+                  ].join('\n'),
+                ),
+                isThreeLine: true,
+                trailing: IconButton(
+                  tooltip: 'حذف العرض',
+                  icon: const Icon(
+                    Icons.delete_forever_rounded,
+                    color: Colors.redAccent,
+                  ),
+                  onPressed: () => _deleteOffer(context, doc),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -735,10 +977,19 @@ class _ChatsAdminTabState extends State<_ChatsAdminTab> {
     final threadPath = (d['threadPath'] ?? '').toString();
     final title = (d['title'] ?? 'محادثة').toString();
     final lastMessage = (d['lastMessage'] ?? '').toString();
+    final uid = _uidFromThreadPath(threadPath);
     return Card(
       child: ListTile(
         title: Text(title),
-        subtitle: Text(lastMessage.isEmpty ? 'بدون رسائل بعد' : lastMessage),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _AdminChatUserLine(uid: uid),
+            const SizedBox(height: 4),
+            Text(lastMessage.isEmpty ? 'بدون رسائل بعد' : lastMessage),
+          ],
+        ),
         onTap: threadPath.isEmpty
             ? null
             : () {
@@ -751,6 +1002,40 @@ class _ChatsAdminTabState extends State<_ChatsAdminTab> {
                 ));
               },
       ),
+    );
+  }
+
+  String _uidFromThreadPath(String threadPath) {
+    final parts = threadPath.split('/').where((p) => p.isNotEmpty).toList();
+    final index = parts.indexOf('support_general');
+    if (index >= 0 && parts.length > index + 1) return parts[index + 1];
+    return '';
+  }
+}
+
+class _AdminChatUserLine extends StatelessWidget {
+  const _AdminChatUserLine({required this.uid});
+
+  final String uid;
+
+  @override
+  Widget build(BuildContext context) {
+    if (uid.isEmpty) return const Text('المستخدم: غير محدد');
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
+      builder: (context, snapshot) {
+        final user = snapshot.data?.data();
+        final name = (user?['fullName'] ??
+                user?['outletName'] ??
+                user?['name'] ??
+                'غير متوفر')
+            .toString();
+        final phone = (user?['phoneNumber'] ?? 'غير متوفر').toString();
+        return Text(
+          'الاسم: $name • الهاتف: $phone',
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        );
+      },
     );
   }
 }

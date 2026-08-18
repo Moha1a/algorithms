@@ -1,0 +1,1 @@
+ C:\\flutter_projects\\manfathak_flutter\\.dart_tool\\flutter_build\\d89e5869b9d102f24d180bce7dcbee7c\\dart_build_result.json:  C:\\flutter\\bin\\cache\\dart-sdk\\version C:\\flutter_projects\\manfathak_flutter\\.dart_tool\\package_config.json C:\\flutter_projects\\manfathak_flutter\\pubspec.yaml c:\\flutter_projects\\manfathak_flutter\\.dart_tool\\package_config.json
